@@ -23,9 +23,10 @@ app.use("/api", aiRoutes);
 app.use("/api/query", queryRoutes);
 
 const PORT = process.env.PORT || 5000;
-if (process.env.NODE_ENV !== 'production') {
-    app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
-}
+
+// THIS MUST RUN IN RENDER
+app.listen(PORT, () => {
+    console.log(`Server running on port ${PORT}`);
+});
 
 export default app;
-
