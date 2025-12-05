@@ -14,13 +14,16 @@ app.use(cors({
     origin: process.env.CLIENT_URL || "*",
     credentials: true,
     methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization"]
 }));
 app.use(express.json());
 
 app.use("/api", uploadRoutes);
 app.use("/api", aiRoutes);
 app.use("/api/query", queryRoutes);
+
+app.get('/' , (req ,res) => {
+    res.send("server is working fine ✅");
+})
 
 const PORT = process.env.PORT || 5000;
 
