@@ -2,7 +2,7 @@ import axios from 'axios';
 
 // Base axios instance
 const api = axios.create({
-    baseURL: import.meta.env.VITE_API_URL || '/api',
+    baseURL: import.meta.env.VITE_API_URL ,
     headers: {
         'Content-Type': 'application/json',
     },
@@ -38,7 +38,7 @@ export const uploadExcel = async (file) => {
     const formData = new FormData();
     formData.append('file', file);
 
-    return api.post('/upload', formData, {
+    return api.post('/api/upload', formData, {
         headers: {
             'Content-Type': 'multipart/form-data',
         },
@@ -53,7 +53,7 @@ export const uploadExcel = async (file) => {
  * @returns {Promise} Response with AI answer and data
  */
 export const askAI = async (question) => {
-    return api.post('/ask', { question });
+    return api.post('/api/ask', { question });
 };
 
 // ==================== DATA QUERIES ====================
@@ -66,7 +66,7 @@ export const askAI = async (question) => {
  * @returns {Promise} Search results
  */
 export const searchByText = async (searchText, columns = [], limit = 100) => {
-    return api.post('/query/search', { searchText, columns, limit });
+    return api.post('/api/query/search', { searchText, columns, limit });
 };
 
 /**
@@ -77,7 +77,7 @@ export const searchByText = async (searchText, columns = [], limit = 100) => {
  * @returns {Promise} Filtered results
  */
 export const filterByAmount = async (minAmount, maxAmount, limit = 100) => {
-    return api.post('/query/amount', { minAmount, maxAmount, limit });
+    return api.post('/api/query/amount', { minAmount, maxAmount, limit });
 };
 
 /**
@@ -89,7 +89,7 @@ export const filterByAmount = async (minAmount, maxAmount, limit = 100) => {
  * @returns {Promise} Filtered results
  */
 export const filterByDateRange = async (startDate, endDate, dateField = 'DocumentDate', limit = 100) => {
-    return api.post('/query/date', { startDate, endDate, dateField, limit });
+    return api.post('/api/query/date', { startDate, endDate, dateField, limit });
 };
 
 /**
@@ -101,7 +101,7 @@ export const filterByDateRange = async (startDate, endDate, dateField = 'Documen
  * @returns {Promise} Filtered results
  */
 export const filterByStatus = async (initiatorStatus, l1Status, l2Status, limit = 100) => {
-    return api.post('/query/status', { initiatorStatus, l1Status, l2Status, limit });
+    return api.post('/api/query/status', { initiatorStatus, l1Status, l2Status, limit });
 };
 
 /**
@@ -110,7 +110,7 @@ export const filterByStatus = async (initiatorStatus, l1Status, l2Status, limit 
  * @returns {Promise} Filtered results
  */
 export const combineFilters = async (filters) => {
-    return api.post('/query/filter', filters);
+    return api.post('/api/query/filter', filters);
 };
 
 /**
@@ -122,7 +122,7 @@ export const combineFilters = async (filters) => {
  * @returns {Promise} Paginated results
  */
 export const getPaginatedData = async (page = 1, limit = 50, sortBy = 'excelRowNumber', sortOrder = 1) => {
-    return api.post('/query/paginate', { page, limit, sortBy, sortOrder });
+    return api.post('/api/query/paginate', { page, limit, sortBy, sortOrder });
 };
 
 /**
@@ -130,7 +130,8 @@ export const getPaginatedData = async (page = 1, limit = 50, sortBy = 'excelRowN
  * @returns {Promise} Statistics data
  */
 export const getStatistics = async () => {
-    return api.get('/query/stats');
+    return api.get('/api/query/stats');
 };
 
 export default api;
+
