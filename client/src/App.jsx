@@ -180,60 +180,66 @@ function App() {
       {/* Main Content */}
       <div className="pt-24 px-4 sm:px-6 lg:px-8 max-w-[1600px] mx-auto flex flex-col lg:flex-row gap-8">
 
-        {/* Left Sidebar - File Upload */}
+        {/* Left Sidebar */}
         <aside className="w-full lg:w-1/3 xl:w-1/4 space-y-6">
           <div className="sticky top-24">
-            <div className="bg-slate-800/50 backdrop-blur-sm p-6 rounded-2xl border border-slate-700/50 shadow-xl">
-              <h2 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
-                <Database className="w-5 h-5 text-primary-400" />
-                Data Source
-              </h2>
-              <FileUpload onUploadSuccess={handleUploadSuccess} />
-            </div>
 
-            {/* Additional Sidebar Info */}
-            <div className="mt-6 p-4 rounded-xl bg-slate-800/30 border border-slate-700/30">
-              <h3 className="text-sm font-medium text-slate-400 mb-2">System Status</h3>
-              <div className="flex items-center gap-2 text-green-400 text-sm">
-                <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
-                Online & Ready
-              </div>
-            </div>
+            {/* Show File Upload ONLY on Dashboard */}
+            {location.pathname === "/" && (
+              <>
+                <div className="bg-slate-800/50 backdrop-blur-sm p-6 rounded-2xl border border-slate-700/50 shadow-xl">
+                  <h2 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
+                    <Database className="w-5 h-5 text-primary-400" />
+                    Data Source
+                  </h2>
+                  <FileUpload onUploadSuccess={handleUploadSuccess} />
+                </div>
 
-            {/* Common Questions */}
-            <div className="mt-6">
-              <h3 className="text-sm font-bold text-slate-300 mb-3 uppercase tracking-wider px-1">Common Questions</h3>
-              <div className="space-y-2 max-h-[calc(100vh-500px)] overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-slate-700 scrollbar-track-transparent">
-                {[
-                  "Show me the top 10 entries",
-                  "Show the last 20 rows",
-                  "How many are Credit and how many are Debit?",
-                  "Breakdown by Initiator Status",
-                  "Count entries by Vendor Name",
-                  "Show me unique vendors",
-                  "Show me unique cost centers",
-                  "Show entries where amount is greater than 1,00,000",
-                  "What is the average transaction amount?",
-                  "Show all entries for vendor TCS",
-                  "Show records from 2023 only",
-                  "Show all entries approved by Initiator",
-                  "Which vendor has the highest amount?",
-                  "Summarize the vendor activity"
-                ].map((q, i) => (
-                  <button
-                    key={i}
-                    onClick={() => {
-                      navigate(`/chat?q=${encodeURIComponent(q)}`);
-                    }}
-                    className="w-full text-left p-3 rounded-lg bg-slate-800/50 hover:bg-slate-700/50 border border-slate-700/50 hover:border-slate-600 transition-all text-sm text-slate-400 hover:text-white group"
-                  >
-                    <span className="line-clamp-2">{q}</span>
-                  </button>
-                ))}
+                <div className="mt-6 p-4 rounded-xl bg-slate-800/30 border border-slate-700/30">
+                  <h3 className="text-sm font-medium text-slate-400 mb-2">System Status</h3>
+                  <div className="flex items-center gap-2 text-green-400 text-sm">
+                    <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
+                    Online & Ready
+                  </div>
+                </div>
+              </>
+            )}
+
+            {/* Show Common Questions ONLY on Chat page */}
+            {location.pathname === "/chat" && (
+              <div className="mt-6">
+                <h3 className="text-sm font-bold text-slate-300 mb-3 uppercase tracking-wider px-1">Common Questions</h3>
+                <div className="space-y-2 max-h-[calc(100vh-300px)] overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-slate-700 scrollbar-track-transparent">
+                  {[
+                    "Show me the top 10 entries",
+                    "Show the last 20 entries",
+                    "How many are Credit & Debit ?",
+                    "Breakdown by Initiator Status",
+                    "Count entries by Vendor Name",
+                    "Show me unique vendors",
+                    "Show me unique cost centers",
+                    "Show entries where amount is greater than 1,00,000",
+                    "Show all entries for vendor TCS",
+                    "Show records from 2023 only",
+                    "Show all entries approved by Initiator",
+                    "Which vendor has the highest amount?",
+                    "Summarize the vendor activity"
+                  ].map((q, i) => (
+                    <button
+                      key={i}
+                      onClick={() => navigate(`/chat?q=${encodeURIComponent(q)}`)}
+                      className="w-full text-left p-3 rounded-lg bg-slate-800/50 hover:bg-slate-700/50 border border-slate-700/50 hover:border-slate-600 transition-all text-sm text-slate-400 hover:text-white group"
+                    >
+                      <span className="line-clamp-2">{q}</span>
+                    </button>
+                  ))}
+                </div>
               </div>
-            </div>
+            )}
+
           </div>
         </aside>
+
 
         {/* Right Content Area */}
         <main className="flex-1 min-w-0 space-y-8">

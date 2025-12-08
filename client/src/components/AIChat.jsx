@@ -155,37 +155,72 @@ const AIChat = () => {
                                         {msg.content}
                                     </ReactMarkdown>
                                 </div>
+                                {/* DATA PREVIEW */}
                                 {msg.data && Array.isArray(msg.data) && msg.data.length > 0 && (
                                     <div className="mt-4 overflow-hidden rounded-xl border border-slate-700/50 bg-slate-900/30">
-                                        <div className="px-4 py-2 bg-slate-800/50 border-b border-slate-700/50 flex items-center justify-between">
-                                            <span className="text-xs font-medium text-slate-400">Data Preview ({msg.data.length} items)</span>
+
+                                        <div className="px-4 py-2 bg-slate-800/50 border-b border-slate-700/50">
+                                            <span className="text-xs font-medium text-slate-400">
+                                                Data Preview ({msg.data.length} items)
+                                            </span>
                                         </div>
-                                        <div className="overflow-x-auto max-h-[300px]">
-                                            <table className="min-w-full divide-y divide-slate-700/50">
-                                                <thead className="bg-slate-800/80 sticky top-0 z-10">
-                                                    <tr>
-                                                        {Object.keys(msg.data[0]).map((key) => (
-                                                            <th key={key} className="px-4 py-3 text-left text-xs font-medium text-slate-300 uppercase tracking-wider whitespace-nowrap">
-                                                                {key.replace(/([A-Z])/g, ' $1').trim()}
+
+                                        {/* CASE 1 — ARRAY OF STRINGS */}
+                                        {typeof msg.data[0] === "string" ? (
+                                            <div className="overflow-x-auto max-h-[300px]">
+                                                <table className="min-w-full divide-y divide-slate-700/50">
+                                                    <thead className="bg-slate-800/80 sticky top-0 z-10">
+                                                        <tr>
+                                                            <th className="px-4 py-3 text-left text-xs font-medium text-slate-300 uppercase">
+                                                                Value
                                                             </th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody className="divide-y divide-slate-700/50">
+                                                        {msg.data.map((val, idx) => (
+                                                            <tr key={idx} className="hover:bg-slate-800/30 transition-colors">
+                                                                <td className="px-4 py-2 text-sm text-slate-300">{val}</td>
+                                                            </tr>
                                                         ))}
-                                                    </tr>
-                                                </thead>
-                                                <tbody className="divide-y divide-slate-700/50">
-                                                    {msg.data.map((row, i) => (
-                                                        <tr key={i} className="hover:bg-slate-800/30 transition-colors">
-                                                            {Object.values(row).map((val, j) => (
-                                                                <td key={j} className="px-4 py-2 text-sm text-slate-300 whitespace-nowrap">
-                                                                    {typeof val === 'object' ? JSON.stringify(val) : String(val)}
-                                                                </td>
+                                                    </tbody>
+                                                </table>
+                                            </div>
+                                        ) : (
+                                            /* CASE 2 — ARRAY OF OBJECTS (unique vendors + all other queries) */
+                                            <div className="overflow-x-auto max-h-[300px]">
+                                                <table className="min-w-full divide-y divide-slate-700/50">
+                                                    <thead className="bg-slate-800/80 sticky top-0 z-10">
+                                                        <tr>
+                                                            {Object.keys(msg.data[0]).map((key) => (
+                                                                <th
+                                                                    key={key}
+                                                                    className="px-4 py-3 text-left text-xs font-medium text-slate-300 uppercase tracking-wider whitespace-nowrap"
+                                                                >
+                                                                    {key.replace(/([A-Z])/g, ' $1').trim()}
+                                                                </th>
                                                             ))}
                                                         </tr>
-                                                    ))}
-                                                </tbody>
-                                            </table>
-                                        </div>
+                                                    </thead>
+                                                    <tbody className="divide-y divide-slate-700/50">
+                                                        {msg.data.map((row, i) => (
+                                                            <tr key={i} className="hover:bg-slate-800/30 transition-colors">
+                                                                {Object.values(row).map((val, j) => (
+                                                                    <td key={j} className="px-4 py-2 text-sm text-slate-300 whitespace-nowrap">
+                                                                        {typeof val === "object" ? JSON.stringify(val) : String(val)}
+                                                                    </td>
+                                                                ))}
+                                                            </tr>
+                                                        ))}
+                                                    </tbody>
+                                                </table>
+                                            </div>
+                                        )}
+
                                     </div>
                                 )}
+
+
+
                             </div>
                             <span className="text-[10px] text-slate-500 mt-1 px-1">
                                 {msg.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}

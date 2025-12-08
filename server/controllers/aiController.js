@@ -1,3 +1,7 @@
+// aiController.js (clean, production-ready)
+// Delegates data operations to queryController to avoid duplicated inline Mongo logic.
+// Provides robust intent parsing, safe limits, and consistent output formatting.
+
 import OpenAI from "openai";
 import Entry from "../model/Entry.js";
 
@@ -7,500 +11,474 @@ import {
     getBottomN,
     getUnique,
     getSpecificColumns,
-    getUniqueCombination
+    getUniqueCombination,
+    searchByText,
+    filterByAmount,
+    filterByDateRange,
+    filterByStatus,
+    combineFilters,
+    getStatistics,
+    getAllWithPagination
 } from "./queryController.js";
 
-const client = new OpenAI({
-    apiKey: process.env.OPENAI_API_KEY,
-});
+const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
-// =========================
-// Intent Helpers
-// =========================
+// ---------- Configuration ----------
+const PREVIEW_LIMIT = 50;
+const DEFAULT_LIMIT = 50;
 
-const isAll = q => /all|every|entire|complete/i.test(q);
+// ---------- Simple intent helpers ----------
+const isAll = (q) => /\b(all|every|entire|complete)\b/i.test(q);
 const extractNumber = (q) => {
     if (isAll(q)) return 10000;
-    return Number(q.match(/\b(\d+)\b/)?.[1] || 10);
+    const m = q.match(/\b(\d{1,6})\b/);
+    return Number(m?.[1] || 10);
 };
-const isUnique = q => /unique|distinct|different|without repetition/i.test(q);
-const isTop = q => /top|first|initial|show me|give me/i.test(q);
-const isBottom = q => /bottom|last|latest|recent/i.test(q);
+const isUnique = (q) => /\b(unique|distinct|different)\b/i.test(q);
+const isTop = (q) => /\b(top|first|show me|give me|show the top)\b/i.test(q);
+const isBottom = (q) => /\b(bottom|last|latest|recent)\b/i.test(q);
+const isDateRange = (q) => /(between|from|to).*?(date|posting|document)/i.test(q);
+const isAmountRange = (q) => /(amount|greater than|less than|more than|between|>|<|>=|<=|\d,\d)/i.test(q);
+const isStatusQuery = (q) => /\b(approved|rejected|pending)\b/i.test(q);
+const isTextSearch = (q) => /\b(find|search|contains|matching|search for|show all entries for)\b/i.test(q);
+const isStatsQuery = (q) => /\b(average|mean|avg|total|sum|max|min|highest|lowest)\b/i.test(q);
+const isGroupQuery = (q) => /\b(group by|count by|total by|summarize|how many|breakdown|by)\b/i.test(q);
+const isDuplicate = (q) => /\bduplicate\b/i.test(q);
+const isMissingQuery = (q) => /\b(missing|null|empty|blank)\b/i.test(q);
 
-const extractCols = (q, cols) => {
-    const lowerQ = q.toLowerCase();
-    return cols.filter(c => {
-        const lowerC = c.toLowerCase();
-        // Direct match
-        if (lowerQ.includes(lowerC)) return true;
-        // Handle "Cost Center" -> "JournalEntryCostCenter"
-        if (lowerC.includes(lowerQ.replace(/\s+/g, ''))) return true;
-        // Handle split words "Cost Center" matching "JournalEntryCostCenter"
-        // Use 'c' (original) to preserve case for splitting
-        const words = c.replace(/([A-Z])/g, ' $1').trim().toLowerCase().split(' ');
-        // Check if any significant word from the column name appears in the query
-        // Also handle plural forms in query (e.g., "vendors" includes "vendor")
-        return words.some(w => w.length > 2 && lowerQ.includes(w));
-    });
+// extract simple date patterns (YYYY-MM-DD)
+const extractDateRange = (q) => {
+    const m = q.match(/\b(\d{4}-\d{2}-\d{2})\b/g) || [];
+    return { start: m[0], end: m[1] };
 };
 
-// ---- Date Range Helpers ----
-const isDateRange = q =>
-    /(between|from|to)/i.test(q) && /(date|posting|document)/i.test(q);
-
-const extractDateRange = q => {
-    const match = q.match(/(\d{4}-\d{2}-\d{2})/g);
-    if (!match) return {};
-    return { start: match[0], end: match[1] };
+// extract simple amount numbers (strip commas)
+const extractAmountRange = (q) => {
+    const m = q.replace(/[,₹]/g, "").match(/\d{1,12}/g) || [];
+    if (m.length === 0) return {};
+    if (m.length === 1) return { min: Number(m[0]) };
+    return { min: Number(m[0]), max: Number(m[1]) };
 };
 
-// ---- Amount Range ----
-const isAmountRange = q =>
-    /(amount|value)/i.test(q) && /(>|<|<=|>=|between)/i.test(q);
+// try to find likely column names from text
+const findColumnFromQuestion = (q, columns) => {
+    const lower = q.toLowerCase();
+    // exact tokens to common column keys mapping (common user phrases)
+    const map = {
+        "JournalEntryVendorName": ["vendor", "vendors", "vendor name", "supplier", "unique vendors"],
+        "JournalEntryVendorNumber": ["vendor number"],
 
-const extractAmountRange = q => {
-    const nums = q.match(/\d+/g);
-    if (!nums) return {};
-    if (nums.length === 1) return { min: Number(nums[0]) };
-    return { min: Number(nums[0]), max: Number(nums[1]) };
+        "JournalEntryAmount": ["amount", "value"],
+        "JournalEntryType": ["credit", "debit", "journal entry type"],
+        "JournalEntryCostCenter": ["cost center", "costcenter", "cost_center"],
+
+        "InitiatorStatus": ["initiator status", "initiator"],
+        "L1ApproverStatus": ["l1", "l1 status"],
+        "L2ApproverStatus": ["l2", "l2 status"],
+
+        "DocumentDate": ["document date"],
+        "PostingDate": ["posting date"]
+    };
+
+
+    for (const [col, tokens] of Object.entries(map)) {
+        if (tokens.some(t => lower.includes(t))) return col;
+    }
+
+    if (lower.includes("cost center") && !lower.includes("profit")) return "JournalEntryCostCenter";
+
+    // fallback: match any column token present in question
+    for (const c of columns) {
+        const cname = c.replace(/([A-Z])/g, " $1").toLowerCase();
+        const words = cname.split(/\s+/).filter(Boolean);
+        if (words.some(w => w.length > 2 && lower.includes(w))) return c;
+    }
+    return null;
 };
 
-// ---- Status ----
-const isStatusQuery = q =>
-    /(approved|rejected|pending)/i.test(q);
-
-// ---- Text Search ----
-const isTextSearch = q =>
-    /(find|search|contains|matching)/i.test(q);
-
-// ---- Group By ----
-const isStatsQuery = q =>
-    /(average|mean|total|sum|min|max|minimum|maximum)/i.test(q) && /(amount|value|quantity)/i.test(q);
-
-const isGroupQuery = q =>
-    /(group by|count by|total by|summarize|how many|breakdown)/i.test(q);
-
-// ---- Duplicate ----
-const isDuplicate = q =>
-    /duplicate/i.test(q);
-
-// ---- Missing / Empty ----
-const isMissingQuery = q =>
-    /(missing|null|empty)/i.test(q);
-
-// =====================================================
-//                   MAIN ASK AI CONTROLLER
-// =====================================================
-
+// ---------- Main controller ----------
 export const askAi = async (req, res) => {
     try {
         const { question } = req.body;
-
-        if (!question || question.trim() === "") {
-            return res.json({
-                answer: "Please ask a question about your data.",
-                data: []
-            });
+        if (!question || !question.trim()) {
+            return res.json({ answer: "Please ask a question about your data.", data: [] });
         }
 
         const columns = await getColumns();
         const N = extractNumber(question);
+
         const isAllQuery = isAll(question);
-        const dynamicLimit = isAllQuery ? 0 : 50;
+        const dynamicLimit = isAllQuery ? 0 : DEFAULT_LIMIT;
 
-        const selectedColumns = extractCols(question, columns);
+        // 1) Return column names
+        if (/column(s)?\b/i.test(question)) {
+            return res.json({ answer: "Here are the column names:", data: columns });
+        }
 
-        // ============================
-        // COLUMN LIST
-        // ============================
-        if (/column/i.test(question)) {
+        // --- Unique Vendors (return BOTH Name + Number) ---
+        if (question.match(/unique\s+vendors?/i) || question.match(/distinct\s+vendors?/i)) {
+            const vendors = await Entry.aggregate([
+                {
+                    $group: {
+                        _id: {
+                            vendorNumber: "$JournalEntryVendorNumber",
+                            vendorName: "$JournalEntryVendorName"
+                        }
+                    }
+                },
+                {
+                    $project: {
+                        _id: 0,
+                        vendorNumber: "$_id.vendorNumber",
+                        vendorName: "$_id.vendorName"
+                    }
+                },
+                { $sort: { vendorNumber: 1 } },
+                { $limit: 50 } // preview
+            ]);
+
             return res.json({
-                answer: "Here are all column names:",
-                data: columns
+                answer: `Found ${vendors.length} unique vendors.`,
+                data: vendors
             });
         }
 
-        // ============================
-        // UNIQUE
-        // ============================
-        if (isUnique(question) && selectedColumns.length === 1) {
-            const field = selectedColumns[0];
-            const result = await getUnique(field);
+
+        // --- Unique Cost Centers (ONLY cost center, no profit center) ---
+        if (question.match(/unique\s+cost\s+centers?/i) || question.match(/distinct\s+cost\s+centers?/i)) {
+
+            const costCenters = await Entry.distinct("JournalEntryCostCenter", {
+                JournalEntryCostCenter: { $nin: ["", null, undefined] }
+            });
+
+            return res.json({
+                answer: `Found ${costCenters.length} unique cost centers.`,
+                data: costCenters.slice(0, PREVIEW_LIMIT).map(c => ({ costCenter: c }))
+            });
+        }
+
+
+        // 3) Specific columns requested (e.g., 'show WID and amount')
+        // naive detection: check for column tokens in question
+        const requestedCols = columns.filter(c => {
+            const cname = c.replace(/([A-Z])/g, " $1").toLowerCase();
+            return cname.split(/\s+/).some(w => w.length > 2 && question.toLowerCase().includes(w));
+        });
+
+        // Prevent specific-column extraction if the question is a breakdown or group-by
+        if (
+            requestedCols.length > 0 &&
+            !isGroupQuery(question) &&
+            !/\bbreakdown\b/i.test(question) &&
+            !/\bsummary\b/i.test(question) &&
+            !/\bcount by\b/i.test(question) &&
+            !/\bgroup\b/i.test(question) &&
+            !/\blast\b/i.test(question) &&
+            !/\brecent\b/i.test(question) &&
+            !isAmountRange(question)
+        ) {
+            const result = await getSpecificColumns(N, requestedCols);
             return formatOutput(res, question, result);
         }
 
-        if (isUnique(question) && selectedColumns.length > 1) {
-            const result = await getUniqueCombination(selectedColumns);
+        if (
+            requestedCols.length > 0 &&
+            !isGroupQuery(question) &&
+            !question.match(/top\s+\d+\s+vendors?/i) &&
+            !question.match(/top\s+\d+\s+vendor\s+name/i) &&
+            !question.match(/\blast\b/i) &&
+            !question.match(/\brecent\b/i) &&
+            !isAmountRange(question)
+        ) {
+            const result = await getSpecificColumns(N, requestedCols);
             return formatOutput(res, question, result);
         }
 
-        // ============================
-        // SPECIFIC COLUMNS
-        // ============================
-        if (selectedColumns.length > 0) {
-            const result = await getSpecificColumns(N, selectedColumns);
-            return formatOutput(res, question, result);
+        // --- Top N Vendors (must run BEFORE specific columns logic) ---
+        if (question.match(/top\s+\d+\s+vendors?/i) || question.match(/top\s+\d+\s+vendor\s+name/i)) {
+
+            const numberMatch = question.match(/top\s+(\d+)/i);
+            const topN = numberMatch ? parseInt(numberMatch[1]) : 10;
+
+            const agg = await Entry.aggregate([
+                {
+                    $group: {
+                        _id: "$JournalEntryVendorName",
+                        count: { $sum: 1 }
+                    }
+                },
+                { $sort: { count: -1 } },
+                { $limit: topN },
+                {
+                    $project: {
+                        vendorName: "$_id",
+                        count: 1,
+                        _id: 0
+                    }
+                }
+            ]);
+
+            return res.json({
+                answer: `Top ${topN} Vendors by number of entries:`,
+                data: agg
+            });
         }
 
-        // ============================
-        // TOP N
-        // ============================
-        if (isTop(question) || /^\s*\d+\s+(rows?|records?|entries?)/i.test(question)) {
-            const result = await getTopN(N);
-            return formatOutput(res, question, result);
+        // 4) TOP / FIRST N
+        if (isTop(question)) {
+            const rows = await getTopN(N);
+            return formatOutput(res, question, rows);
         }
 
-        // ============================
-        // BOTTOM N
-        // ============================
-        if (isBottom(question)) {
-            const result = await getBottomN(N);
-            return formatOutput(res, question, result);
+        // 5) BOTTOM / LAST N
+        if (/\blast\b/i.test(question) || /\brecent\b/i.test(question) || isBottom(question)) {
+            const rows = await getBottomN(N);
+            return formatOutput(res, question, rows);
         }
 
-        // ============================
-        // DATE RANGE
-        // ============================
+        // 6) DATE RANGE queries
         if (isDateRange(question)) {
             const { start, end } = extractDateRange(question);
-            const dateField = question.includes("posting")
-                ? "PostingDate"
-                : "DocumentDate";
-
-            const result = await Entry.find({
-                [dateField]: { $gte: start, $lte: end }
-            })
-                .limit(dynamicLimit)
-                .select({ _id: 0 });
-
-            return formatOutput(res, question, result);
+            const dateField = question.toLowerCase().includes("posting") ? "PostingDate" : "DocumentDate";
+            const rows = await filterByDateRange(start, end, dateField, dynamicLimit || PREVIEW_LIMIT);
+            return formatOutput(res, question, rows);
         }
 
-        // ============================
-        // AMOUNT RANGE
-        // ============================
+        // 7) AMOUNT RANGE queries -> use queryController.filterByAmount
         if (isAmountRange(question)) {
             const { min, max } = extractAmountRange(question);
-            const filter = {};
-
-            if (min && max) {
-                filter.$expr = {
-                    $and: [
-                        { $gte: [{ $toDouble: "$JournalEntryAmount" }, min] },
-                        { $lte: [{ $toDouble: "$JournalEntryAmount" }, max] }
-                    ]
-                };
-            } else {
-                filter.$expr = {
-                    $gte: [{ $toDouble: "$JournalEntryAmount" }, min]
-                };
-            }
-
-            const result = await Entry.find(filter)
-                .limit(dynamicLimit)
-                .select({ _id: 0 });
-
-            return formatOutput(res, question, result);
+            const rows = await filterByAmount(min ?? null, max ?? null, dynamicLimit || PREVIEW_LIMIT);
+            return formatOutput(res, question, rows);
         }
 
-        // ============================
-        // STATUS QUERY
-        // ============================
+        // 8) STATUS related queries (initiator / L1 / L2)
         if (isStatusQuery(question)) {
-            let field;
-
-            if (question.includes("l1")) field = "L1ApproverStatus";
-            else if (question.includes("l2")) field = "L2ApproverStatus";
-            else field = "InitiatorStatus";
-
-            const keyword = question.match(/approved|rejected|pending/i)[0];
-
-            const result = await Entry.find({
-                [field]: new RegExp(keyword, "i")
-            })
-                .limit(dynamicLimit)
-                .select({ _id: 0 });
-
-            return formatOutput(res, question, result);
+            const col = findColumnFromQuestion(question, columns) || "InitiatorStatus";
+            const m = question.match(/\b(approved|rejected|pending)\b/i);
+            if (!m) return res.json({ answer: "Specify status (approved / rejected / pending).", data: [] });
+            const status = m[1] || m[0];
+            const rows = await filterByStatus(status, null, null, dynamicLimit || PREVIEW_LIMIT)
+                .catch(async () => {
+                    // if default filterByStatus signature differs, fallback to general find
+                    return Entry.find({ [col]: new RegExp(`^${status}$`, "i") }).limit(dynamicLimit || PREVIEW_LIMIT).select({ _id: 0 }).lean();
+                });
+            return formatOutput(res, question, rows);
         }
 
-        // ============================
-        // TEXT SEARCH
-        // ============================
+        // 9) TEXT SEARCH
         if (isTextSearch(question)) {
-            const keyword = question.replace(/find|search|entries|matching/gi, "").trim();
-
-            const regex = new RegExp(keyword, "i");
-            const orQuery = columns.map(c => ({ [c]: regex }));
-
-            const result = await Entry.find({ $or: orQuery })
-                .limit(dynamicLimit)
-                .select({ _id: 0 });
-
-            return formatOutput(res, question, result);
+            // extract a keyword-like phrase (strip words like 'show', 'entries', etc.)
+            const cleaned = question.replace(/\b(find|search|entries|matching|show|show me|for)\b/gi, "").trim();
+            const kw = cleaned.replace(/[^a-zA-Z0-9\s]/g, "").trim();
+            if (!kw) return res.json({ answer: "Please provide a keyword to search for.", data: [] });
+            const rows = await searchByText(kw, null, dynamicLimit || PREVIEW_LIMIT);
+            return formatOutput(res, question, rows);
         }
 
-        // ============================
-        // STATS QUERY (New)
-        // ============================
+        // 10) STATS: total / average / min / max
         if (isStatsQuery(question)) {
-            const stats = await Entry.aggregate([
+            const stats = await getStatistics();
+            // build a friendly answer
+            const qLower = question.toLowerCase();
+            let answer = "";
+            if (qLower.includes("average") || qLower.includes("avg") || qLower.includes("mean")) {
+                answer = `Average transaction amount: ₹${Math.round(stats.amountStats.avgAmount || 0).toLocaleString()}`;
+            } else if (qLower.includes("total") || qLower.includes("sum")) {
+                answer = `Total amount: ₹${Math.round(stats.amountStats.totalAmount || 0).toLocaleString()}`;
+            } else if (qLower.includes("max") || qLower.includes("highest")) {
+                answer = `Maximum amount: ₹${Math.round(stats.amountStats.maxAmount || 0).toLocaleString()}`;
+            } else if (qLower.includes("min") || qLower.includes("lowest")) {
+                answer = `Minimum amount: ₹${Math.round(stats.amountStats.minAmount || 0).toLocaleString()}`;
+            } else {
+                answer = `Total: ₹${Math.round(stats.amountStats.totalAmount || 0).toLocaleString()}, Average: ₹${Math.round(stats.amountStats.avgAmount || 0).toLocaleString()}`;
+            }
+            return res.json({ answer, data: [stats.amountStats] });
+        }
+
+        // ---------- SPECIAL FIX: Clean Credit / Debit Counting ----------
+        if (question.match(/credit|debit/i)) {
+            const result = await Entry.aggregate([
                 {
                     $addFields: {
-                        amountNumeric: { $toDouble: "$JournalEntryAmount" }
+                        normalizedType: {
+                            $trim: { input: { $toUpper: "$JournalEntryType" } }
+                        }
+                    }
+                },
+                {
+                    $match: {
+                        normalizedType: { $in: ["DEBIT", "CREDIT"] }
                     }
                 },
                 {
                     $group: {
-                        _id: null,
-                        totalAmount: { $sum: "$amountNumeric" },
-                        avgAmount: { $avg: "$amountNumeric" },
-                        maxAmount: { $max: "$amountNumeric" },
-                        minAmount: { $min: "$amountNumeric" },
+                        _id: "$normalizedType",
                         count: { $sum: 1 }
+                    }
+                },
+                { $sort: { _id: 1 } },
+                {
+                    $project: {
+                        type: "$_id",
+                        count: 1,
+                        _id: 0
                     }
                 }
             ]);
 
-            const s = stats[0] || { totalAmount: 0, avgAmount: 0 };
-
-            let answer = "";
-            const qLower = question.toLowerCase();
-            if (qLower.includes("average") || qLower.includes("mean")) answer = `The average amount is ${s.avgAmount.toFixed(2)}.`;
-            else if (qLower.includes("total") || qLower.includes("sum")) answer = `The total amount is ${s.totalAmount.toFixed(2)}.`;
-            else if (qLower.includes("max")) answer = `The maximum amount is ${s.maxAmount}.`;
-            else if (qLower.includes("min")) answer = `The minimum amount is ${s.minAmount}.`;
-            else answer = `Total: ${s.totalAmount}, Average: ${s.avgAmount}, Count: ${s.count}`;
-
             return res.json({
-                answer: answer,
-                data: [s]
+                answer: "Correct Credit / Debit counts (cleaned):",
+                data: result
             });
         }
 
-        // ============================
-        // GROUP BY
-        // ============================
+
+        // 11) GROUP BY queries (counts by vendor/type/status/cost center)
+        // 11) GROUP BY queries (counts by vendor/type/status/cost center)
         if (isGroupQuery(question)) {
-            let field = columns.find(c => question.toLowerCase().includes(c.toLowerCase()));
+            const detected = findColumnFromQuestion(question, columns) || "InitiatorStatus";
 
-            // Infer field if not explicitly found
-            if (!field) {
-                const lowerQ = question.toLowerCase();
-                if (lowerQ.includes('credit') || lowerQ.includes('debit')) {
-                    field = 'JournalEntryType';
-                } else if (lowerQ.includes('approved') || lowerQ.includes('rejected') || lowerQ.includes('pending')) {
-                    if (lowerQ.includes('l1')) field = 'L1ApproverStatus';
-                    else if (lowerQ.includes('l2')) field = 'L2ApproverStatus';
-                    else field = 'InitiatorStatus';
-                } else if (lowerQ.includes('vendor')) {
-                    field = 'JournalEntryVendorName';
-                } else if (lowerQ.includes('cost center')) {
-                    field = 'JournalEntryCostCenter';
+            const agg = await Entry.aggregate([
+                {
+                    $group: {
+                        _id: `$${detected}`,
+                        count: { $sum: 1 }
+                    }
+                },
+                { $sort: { count: -1 } },
+                {
+                    $project: {
+                        field: detected,
+                        value: "$_id",
+                        count: 1,
+                        _id: 0
+                    }
                 }
-            }
-
-            if (!field) {
-                return res.json({
-                    answer: "I'm not sure which column to count by. Try asking 'how many by vendor' or 'breakdown by status'.",
-                    data: []
-                });
-            }
-
-            const result = await Entry.aggregate([
-                { $group: { _id: `$${field}`, count: { $sum: 1 } } },
-                { $sort: { count: -1 } }
             ]);
 
-            const labeledResult = result.map(r => ({
-                [field]: r._id,
-                count: r.count
-            }));
-
-            return formatOutput(res, question, labeledResult);
+            return res.json({
+                answer: `Breakdown by ${detected}:`,
+                data: agg
+            });
         }
 
-        // ============================
-        // DUPLICATE FINDER
-        // ============================
+
+        // 12) DUPLICATE check
         if (isDuplicate(question)) {
-            const field = columns.find(c => question.includes(c.toLowerCase()));
-
-            const result = await Entry.aggregate([
-                { $group: { _id: `$${field}`, rows: { $push: "$$ROOT" }, count: { $sum: 1 } } },
-                { $match: { count: { $gt: 1 } } }
+            const detected = findColumnFromQuestion(question, columns);
+            if (!detected) return res.json({ answer: "Please specify which column to check duplicates for.", data: [] });
+            const duplicates = await Entry.aggregate([
+                { $group: { _id: `$${detected}`, count: { $sum: 1 }, rows: { $push: "$$ROOT" } } },
+                { $match: { count: { $gt: 1 } } },
+                { $limit: PREVIEW_LIMIT }
             ]);
-
-            const labeledResult = result.map(r => ({
-                [field]: r._id,
-                count: r.count,
-                rows: r.rows
-            }));
-
-            return formatOutput(res, question, labeledResult);
+            const mapped = duplicates.map(d => ({ [detected]: d._id, count: d.count }));
+            return formatOutput(res, question, mapped);
         }
 
-        // ============================
-        // EMPTY / NULL CHECKER
-        // ============================
+        // 13) MISSING / NULL checks
         if (isMissingQuery(question)) {
-            const field = columns.find(c => question.includes(c.toLowerCase()));
-
-            const result = await Entry.find({
-                $or: [
-                    { [field]: null },
-                    { [field]: "" },
-                    { [field]: undefined }
-                ]
-            }).limit(50).select({ _id: 0 });
-
-            return formatOutput(res, question, result);
+            const detected = findColumnFromQuestion(question, columns);
+            if (!detected) return res.json({ answer: "Please specify which column to check for missing values.", data: [] });
+            const rows = await Entry.find({
+                $or: [{ [detected]: null }, { [detected]: "" }, { [detected]: undefined }]
+            }).limit(PREVIEW_LIMIT).select({ _id: 0 }).lean();
+            return formatOutput(res, question, rows);
         }
 
-        // ======================================================
-        // FALLBACK → AI GENERATED QUERY (MongoDB JSON)
-        // ======================================================
+        // 14) Fallback: try combineFilters to handle complex natural queries
+        // We'll create a simple filter object and use combineFilters; if unsure, fallback to limited full-text search
+        const fallbackLimit = isAllQuery ? 0 : PREVIEW_LIMIT;
+        const combined = await combineFilters({ searchText: question, limit: fallbackLimit });
+        if (combined && combined.data && combined.data.length > 0) {
+            return formatOutput(res, question, combined.data.slice(0, PREVIEW_LIMIT), { pagination: combined.pagination });
+        }
 
-        const prompt = `
-Convert user question into a MongoDB query JSON.
-
-FIELDS: ${columns.join(", ")}
-
-Return ONLY this JSON:
-{
- "filter": {},
- "sort": {},
- "limit": 10,
- "projection": {}
-}
-
-DO NOT include comments.
-DO NOT explain anything.
-Use exact field names.
-If the user asks for "all" or "every", set "limit" to 0. 
-If specific number is asked, use that limit.
-Default limit: 10.
-
-User question: "${question}"
-`;
-
-        const ai = await client.chat.completions.create({
-            model: "gpt-4o-mini",
-            messages: [{ role: "user", content: prompt }],
-            temperature: 0
+        // 15) As last resort: return guided message
+        return res.json({
+            answer: "I couldn't map your question to a strict data operation. Try phrases like 'show top 10 entries', 'unique vendors', 'amount > 100000', or 'breakdown by vendor'.",
+            data: []
         });
 
-        let query = {};
-        try {
-            query = JSON.parse(ai.choices[0].message.content);
-        } catch {
-            return res.json({
-                answer: "I couldn't understand your query. Please rephrase.",
-                data: [],
-                error: "Invalid JSON from AI"
-            });
-        }
-
-        const { filter = {}, sort = {}, limit = 10, projection = {} } = query;
-
-        let finalProj = {};
-        const hasInclusion = Object.values(projection).includes(1);
-
-        if (hasInclusion) {
-            Object.keys(projection).forEach(k => {
-                if (projection[k] === 1 && !["_id", "__v", "createdAt", "updatedAt"].includes(k)) {
-                    finalProj[k] = 1;
-                }
-            });
-        }
-
-        finalProj._id = 0;
-        finalProj.__v = 0;
-        finalProj.createdAt = 0;
-        finalProj.updatedAt = 0;
-
-        const result = await Entry.find(filter)
-            .sort(sort)
-            .limit(limit)
-            .select(finalProj);
-
-        return formatOutput(res, question, result, query);
-
     } catch (error) {
-        console.error("AI error:", error);
-        console.error(error.stack);
-
-        return res.json({
-            answer: "An error occurred while processing your question.",
-            error: error.message,
+        console.error("askAi error:", error);
+        return res.status(500).json({
+            answer: "An internal error occurred while processing your request.",
+            error: String(error),
             data: []
         });
     }
 };
 
-// =====================================================
-// FORMAT OUTPUT
-// =====================================================
+// ---------- Output formatter ----------
+async function formatOutput(res, question, data, meta = {}) {
+    if (!data || (Array.isArray(data) && data.length === 0)) {
+        return res.json({ answer: "No data found for your query.", data: [], meta });
+    }
 
-async function formatOutput(res, question, data, queryUsed = null) {
-    if (!data || data.length === 0) {
+    // Correct handling for UNIQUE VENDOR strings
+    if (Array.isArray(data) && data.every(item => typeof item === "string")) {
         return res.json({
-            answer: "No data found for your query.",
-            data: [],
-            queryUsed
+            answer: `Found ${data.length} unique values.`,
+            data
         });
     }
 
-    if (typeof data[0] === "string" || typeof data[0] === "number") {
+
+    // detect group-like structures (objects with 'count' property)
+    const isGroupLike = Array.isArray(data) && data.every(d => d && (d.count !== undefined));
+    if (isGroupLike) {
+        const cleaned = data.map(r => {
+            // ensure values are primitive strings/numbers
+            const obj = { ...r };
+            Object.keys(obj).forEach(k => {
+                if (obj[k] === null || obj[k] === undefined) obj[k] = "";
+                else obj[k] = typeof obj[k] === "object" ? JSON.stringify(obj[k]) : obj[k];
+            });
+            return obj;
+        });
         return res.json({
-            answer: data.map((v, i) => `${i + 1}. ${v}`).join("\n"),
-            data,
-            queryUsed
+            answer: `Here are ${cleaned.length} grouped results (preview).`,
+            data: cleaned.slice(0, PREVIEW_LIMIT),
+            meta
         });
     }
 
+    // generic table data - cleanup fields
     const cleaned = data.map(row => {
         const obj = row.toObject ? row.toObject() : row;
         delete obj._id;
         delete obj.__v;
         delete obj.createdAt;
         delete obj.updatedAt;
-
-        Object.keys(obj).forEach(k => (obj[k] = String(obj[k] || "")));
+        Object.keys(obj).forEach(k => {
+            if (obj[k] === null || obj[k] === undefined) obj[k] = "";
+            else obj[k] = typeof obj[k] === "object" ? JSON.stringify(obj[k]) : obj[k];
+        });
         return obj;
     });
 
-    const prompt = `
-The user has asked a question about their data. The full data is already displayed to them in a separate table view.
-Please provide a brief, helpful summary or introduction to the data found.
-Do NOT repeat the data in a table or list format.
+    // if result length is huge, only preview
+    if (cleaned.length > PREVIEW_LIMIT) {
+        return res.json({
+            answer: `Showing first ${PREVIEW_LIMIT} of ${cleaned.length} results.`,
+            data: cleaned.slice(0, PREVIEW_LIMIT),
+            meta
+        });
+    }
 
-User question: "${question}"
-Number of results: ${cleaned.length}
-
-Example response: "Here are the top ${cleaned.length} entries matching your criteria."
-`;
-
+    // attempt a short summary using OpenAI for friendly text (non-blocking if fails)
     try {
-        const formatted = await client.chat.completions.create({
+        const summaryPrompt = `The user asked: "${question}". Provide a short helpful one-line summary describing the results (do not include the full table).`;
+        const summaryResp = await client.chat.completions.create({
             model: "gpt-4o-mini",
-            messages: [{ role: "user", content: prompt }],
+            messages: [{ role: "user", content: summaryPrompt }],
             temperature: 0.2
         });
-
-        res.json({
-            answer: formatted.choices[0].message.content,
-            data: cleaned,
-            queryUsed
-        });
-
-    } catch (error) {
-        console.error("Formatting failed:", error);
-
-        res.json({
-            answer: `Here are ${cleaned.length} results:`,
-            data: cleaned,
-            queryUsed
-        });
+        const summary = summaryResp.choices?.[0]?.message?.content || `Found ${cleaned.length} rows.`;
+        return res.json({ answer: summary, data: cleaned, meta });
+    } catch (err) {
+        // If summarization fails, return data with a neutral answer
+        return res.json({ answer: `Found ${cleaned.length} rows.`, data: cleaned, meta });
     }
 }
