@@ -7,6 +7,7 @@ import Statistics from './components/Statistics';
 import FilterPanel from './components/FilterPanel';
 import DataTable from './components/DataTable';
 import { getPaginatedData, combineFilters } from './services/api';
+import FloatingChat from "./components/FloatingChat";
 
 function Dashboard({ refreshTrigger }) {
   const [data, setData] = useState([]);
@@ -259,6 +260,7 @@ function App() {
               </div>
             } />
           </Routes>
+          {location.pathname === "/" && <FloatingChat />}
         </main>
       </div>
     </div>
