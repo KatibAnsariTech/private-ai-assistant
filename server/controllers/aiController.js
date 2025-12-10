@@ -41,7 +41,8 @@ const isDuplicate = (q) => /\bduplicate\b/i.test(q);
 const isMissingQuery = (q) => /\b(missing|null|empty|blank)\b/i.test(q);
 
 // IMPROVED: Graph detection
-const isGraphQuery = (q) => /\b(graph|chart|plot|visualize|visualization|bar chart|line chart|pie chart|show.*graph|graph of|visual|trend)\b/i.test(q);
+// const isGraphQuery = (q) => /\b(graph|chart|plot|visualize|visualization|bar chart|line chart|pie chart|show.*graph|graph of|visual|trend)\b/i.test(q);
+const isGraphQuery = (q) => /(graph|chart|plot|visualize|visualization|bar chart|line chart|pie chart|show graph|graph of|draw|visual|trend)/i.test(q);
 
 // Extract date range
 const extractDateRange = (q) => {
@@ -106,6 +107,65 @@ export const askAi = async (req, res) => {
             return res.json({
                 answer: "Here are all available columns in your dataset:",
                 data: columns.map(c => ({ column: c }))
+            });
+        }
+
+        // 15) GROUP BY / BREAKDOWN QUERIES
+        if (isGroupQuery(question)) {
+            const detected = findColumnFromQuestion(question, columns) || "InitiatorStatus";
+
+            console.log(`🔍 Grouping by: ${detected}`);
+
+            const agg = await Entry.aggregate([
+                {
+                    $match: {
+                        [detected]: { $nin: ["", null, undefined] }
+                    }
+                },
+                {
+                    $group: {
+                        _id: `$${detected}`,
+                        count: { $sum: 1 }
+                    }
+                },
+                { $sort: { count: -1 } },
+                { $limit: 100 },
+                {
+                    $project: {
+                        field: detected,
+                        value: "$_id",
+                        count: 1,
+                        _id: 0
+                    }
+                }
+            ]);
+
+            if (agg.length === 0) {
+                return res.json({
+                    answer: `No data found for ${detected}.`,
+                    data: []
+                });
+            }
+
+            // If graph requested
+            if (isGraphQuery(question)) {
+                const graphData = agg.slice(0, GRAPH_LIMIT);
+
+                return res.json({
+                    answer: `📊 Here is the graphical distribution of **${detected}** (showing top ${graphData.length} items).`,
+                    graph: {
+                        type: "bar",
+                        x: graphData.map(r => String(r.value || "Unknown")),
+                        y: graphData.map(r => r.count),
+                        label: `Count by ${detected}`
+                    }
+                });
+            }
+
+            // Normal table
+            return res.json({
+                answer: `📊 Breakdown by ${detected} (showing top ${Math.min(agg.length, PREVIEW_LIMIT)} of ${agg.length}):`,
+                data: agg.slice(0, PREVIEW_LIMIT)
             });
         }
 
@@ -368,65 +428,6 @@ export const askAi = async (req, res) => {
             return res.json({
                 answer: "📊 Credit and Debit entry counts:",
                 data: result
-            });
-        }
-
-        // 15) GROUP BY / BREAKDOWN QUERIES
-        if (isGroupQuery(question)) {
-            const detected = findColumnFromQuestion(question, columns) || "InitiatorStatus";
-
-            console.log(`🔍 Grouping by: ${detected}`);
-
-            const agg = await Entry.aggregate([
-                {
-                    $match: {
-                        [detected]: { $nin: ["", null, undefined] }
-                    }
-                },
-                {
-                    $group: {
-                        _id: `$${detected}`,
-                        count: { $sum: 1 }
-                    }
-                },
-                { $sort: { count: -1 } },
-                { $limit: 100 },
-                {
-                    $project: {
-                        field: detected,
-                        value: "$_id",
-                        count: 1,
-                        _id: 0
-                    }
-                }
-            ]);
-
-            if (agg.length === 0) {
-                return res.json({
-                    answer: `No data found for ${detected}.`,
-                    data: []
-                });
-            }
-
-            // If graph requested
-            if (isGraphQuery(question)) {
-                const graphData = agg.slice(0, GRAPH_LIMIT);
-
-                return res.json({
-                    answer: `📊 Here is the graphical distribution of **${detected}** (showing top ${graphData.length} items).`,
-                    graph: {
-                        type: "bar",
-                        x: graphData.map(r => String(r.value || "Unknown")),
-                        y: graphData.map(r => r.count),
-                        label: `Count by ${detected}`
-                    }
-                });
-            }
-
-            // Normal table
-            return res.json({
-                answer: `📊 Breakdown by ${detected} (showing top ${Math.min(agg.length, PREVIEW_LIMIT)} of ${agg.length}):`,
-                data: agg.slice(0, PREVIEW_LIMIT)
             });
         }
 
