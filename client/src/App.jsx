@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Routes, Route, Link, useLocation, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, Database, MessageSquare, Menu, X } from 'lucide-react';
+import { LayoutDashboard, Database, MessageSquare, Sparkles } from 'lucide-react';
 import FileUpload from './components/FileUpload';
 import AIChat from './components/AIChat';
 import Statistics from './components/Statistics';
@@ -21,7 +21,6 @@ function Dashboard({ refreshTrigger }) {
   const [sortConfig, setSortConfig] = useState({ key: 'excelRowNumber', direction: 'asc' });
   const [activeFilters, setActiveFilters] = useState({});
 
-  // Columns definition
   const columns = [
     { key: 'excelRowNumber', label: '#' },
     { key: 'WID', label: 'WID' },
@@ -31,10 +30,11 @@ function Dashboard({ refreshTrigger }) {
     { key: 'JournalEntryCostCenter', label: 'Cost Center' },
     {
       key: 'InitiatorStatus', label: 'Initiator Status', render: (val) => (
-        <span className={`px-2 py-1 rounded-full text-xs font-medium ${val === 'Approved' ? 'bg-green-500/20 text-green-400' :
+        <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+          val === 'Approved' ? 'bg-green-500/20 text-green-400' :
           val === 'Rejected' ? 'bg-red-500/20 text-red-400' :
-            'bg-yellow-500/20 text-yellow-400'
-          }`}>
+          'bg-yellow-500/20 text-yellow-400'
+        }`}>
           {val}
         </span>
       )
@@ -117,14 +117,18 @@ function Dashboard({ refreshTrigger }) {
           </span>
         </div>
         <FilterPanel onFilter={handleFilter} onClear={handleClearFilters} />
-        <DataTable
-          data={data}
-          columns={columns}
-          pagination={pagination}
-          onPageChange={handlePageChange}
-          onSort={handleSort}
-          sortConfig={sortConfig}
-        />
+        {loading ? (
+          <div className="text-center py-12 text-slate-400">Loading data...</div>
+        ) : (
+          <DataTable
+            data={data}
+            columns={columns}
+            pagination={pagination}
+            onPageChange={handlePageChange}
+            onSort={handleSort}
+            sortConfig={sortConfig}
+          />
+        )}
       </div>
     </div>
   );
@@ -139,37 +143,82 @@ function App() {
     setRefreshTrigger(prev => prev + 1);
   };
 
+  // IMPROVED: Better categorized questions
+  const commonQuestions = [
+    {
+      category: "📊 Graphs & Charts",
+      questions: [
+        "Show graph of credit vs debit",
+        "Graph of top 10 vendors",
+        "Visualize cost center distribution",
+        "Chart of initiator status breakdown"
+      ]
+    },
+    {
+      category: "📋 Data Tables",
+      questions: [
+        "Show me the top 10 entries",
+        "Show the last 20 entries",
+        "List unique vendors",
+        "Show unique cost centers"
+      ]
+    },
+    {
+      category: "🔍 Search & Filter",
+      questions: [
+        "Show entries where amount > 100000",
+        "Find all entries for vendor TCS",
+        "Show records from 2024 only",
+        "Show all approved by initiator"
+      ]
+    },
+    {
+      category: "📈 Statistics",
+      questions: [
+        "What is the total amount?",
+        "Calculate average amount",
+        "Which vendor has the highest entries?",
+        "How many credit and debit entries?"
+      ]
+    }
+  ];
+
   return (
     <div className="min-h-screen pb-12">
       {/* Navigation Bar */}
-      <nav className="fixed top-0 w-full z-50 bg-slate-900/80 backdrop-blur-md border-b border-slate-700/50">
+      <nav className="fixed top-0 w-full z-50 bg-slate-900/95 backdrop-blur-md border-b border-slate-700/50 shadow-lg">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
             <div className="flex items-center gap-3">
-              <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-primary-500 to-accent-purple flex items-center justify-center">
-                <Database className="w-5 h-5 text-white" />
+              <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-primary-500 to-accent-purple flex items-center justify-center shadow-lg shadow-primary-500/30">
+                <Database className="w-6 h-6 text-white" />
               </div>
-              <span className="text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-white to-slate-400">
-                DataInsight AI
-              </span>
+              <div>
+                <span className="text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-white to-slate-400">
+                  DataInsight AI
+                </span>
+                <p className="text-xs text-slate-500">Excel Analytics Assistant</p>
+              </div>
             </div>
 
-            <div className="hidden md:flex items-center gap-1">
+            <div className="hidden md:flex items-center gap-2">
               <Link
                 to="/"
-                className={`px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-2 ${location.pathname === '/'
-                  ? 'bg-slate-800 text-white shadow-lg shadow-primary-500/10'
-                  : 'text-slate-400 hover:text-white hover:bg-slate-800/50'
-                  }`}
+                className={`px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-2 ${
+                  location.pathname === '/'
+                    ? 'bg-slate-800 text-white shadow-lg shadow-primary-500/10'
+                    : 'text-slate-400 hover:text-white hover:bg-slate-800/50'
+                }`}
               >
                 <LayoutDashboard className="w-4 h-4" /> Dashboard
               </Link>
               <Link
                 to="/chat"
-                className={`px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-2 ${location.pathname === '/chat'
-                  ? 'bg-slate-800 text-white shadow-lg shadow-primary-500/10'
-                  : 'text-slate-400 hover:text-white hover:bg-slate-800/50'
-                  }`}
+                className={`px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-2 ${
+                  location.pathname === '/chat'
+                    ? 'bg-slate-800 text-white shadow-lg shadow-primary-500/10'
+                    : 'text-slate-400 hover:text-white hover:bg-slate-800/50'
+                }`}
               >
                 <MessageSquare className="w-4 h-4" /> AI Assistant
               </Link>
@@ -185,54 +234,54 @@ function App() {
         <aside className="w-full lg:w-1/3 xl:w-1/4 space-y-6">
           <div className="sticky top-24">
 
-            {/* Show File Upload ONLY on Dashboard */}
+            {/* File Upload - Dashboard Only */}
             {location.pathname === "/" && (
               <>
                 <div className="bg-slate-800/50 backdrop-blur-sm p-6 rounded-2xl border border-slate-700/50 shadow-xl">
                   <h2 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
                     <Database className="w-5 h-5 text-primary-400" />
-                    Data Source
+                    Upload Data
                   </h2>
                   <FileUpload onUploadSuccess={handleUploadSuccess} />
                 </div>
 
-                <div className="mt-6 p-4 rounded-xl bg-slate-800/30 border border-slate-700/30">
-                  <h3 className="text-sm font-medium text-slate-400 mb-2">System Status</h3>
+                <div className="mt-6 p-4 rounded-xl bg-gradient-to-br from-green-500/10 to-blue-500/10 border border-green-500/30">
+                  <div className="flex items-center gap-2 mb-2">
+                    <Sparkles className="w-4 h-4 text-green-400" />
+                    <h3 className="text-sm font-bold text-green-400">System Status</h3>
+                  </div>
                   <div className="flex items-center gap-2 text-green-400 text-sm">
                     <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
-                    Online & Ready
+                    All systems operational
                   </div>
                 </div>
               </>
             )}
 
-            {/* Show Common Questions ONLY on Chat page */}
+            {/* Common Questions - Chat Page Only */}
             {location.pathname === "/chat" && (
-              <div className="mt-6">
-                <h3 className="text-sm font-bold text-slate-300 mb-3 uppercase tracking-wider px-1">Common Questions</h3>
-                <div className="space-y-2 max-h-[calc(100vh-300px)] overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-slate-700 scrollbar-track-transparent">
-                  {[
-                    "Show me the top 10 entries",
-                    "Show the last 20 entries",
-                    "How many are Credit & Debit ?",
-                    "Breakdown by Initiator Status",
-                    "Count entries by Vendor Name",
-                    "Show me unique vendors",
-                    "Show me unique cost centers",
-                    "Show entries where amount is greater than 1,00,000",
-                    "Show all entries for vendor TCS",
-                    "Show records from 2023 only",
-                    "Show all entries approved by Initiator",
-                    "Which vendor has the highest amount?",
-                    "Summarize the vendor activity"
-                  ].map((q, i) => (
-                    <button
-                      key={i}
-                      onClick={() => navigate(`/chat?q=${encodeURIComponent(q)}`)}
-                      className="w-full text-left p-3 rounded-lg bg-slate-800/50 hover:bg-slate-700/50 border border-slate-700/50 hover:border-slate-600 transition-all text-sm text-slate-400 hover:text-white group"
-                    >
-                      <span className="line-clamp-2">{q}</span>
-                    </button>
+              <div className="space-y-4">
+                <div className="flex items-center gap-2 px-2">
+                  <Sparkles className="w-5 h-5 text-accent-purple" />
+                  <h3 className="text-lg font-bold text-white">Try These Questions</h3>
+                </div>
+                
+                <div className="space-y-6 max-h-[calc(100vh-200px)] overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-slate-700 scrollbar-track-transparent">
+                  {commonQuestions.map((category, idx) => (
+                    <div key={idx} className="space-y-2">
+                      <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider px-2">
+                        {category.category}
+                      </h4>
+                      {category.questions.map((q, i) => (
+                        <button
+                          key={i}
+                          onClick={() => navigate(`/chat?q=${encodeURIComponent(q)}`)}
+                          className="w-full text-left p-3 rounded-lg bg-slate-800/50 hover:bg-slate-700/50 border border-slate-700/50 hover:border-accent-purple/50 transition-all text-sm text-slate-300 hover:text-white group"
+                        >
+                          <span className="line-clamp-2">{q}</span>
+                        </button>
+                      ))}
+                    </div>
                   ))}
                 </div>
               </div>
@@ -241,7 +290,6 @@ function App() {
           </div>
         </aside>
 
-
         {/* Right Content Area */}
         <main className="flex-1 min-w-0 space-y-8">
           <Routes>
@@ -249,17 +297,22 @@ function App() {
             <Route path="/chat" element={
               <div className="animate-slide-up h-[calc(100vh-8rem)] flex flex-col">
                 <div className="text-center mb-6">
-                  <h2 className="text-3xl font-bold text-white mb-2">Ask AI About Your Data</h2>
+                  <h2 className="text-3xl font-bold text-white mb-2 flex items-center justify-center gap-2">
+                    <Sparkles className="w-8 h-8 text-accent-purple" />
+                    AI Data Assistant
+                  </h2>
                   <p className="text-slate-400">
-                    Get instant insights, summaries, and answers from your uploaded Excel files.
+                    Get instant insights, visualizations, and answers from your Excel data.
                   </p>
                 </div>
-                <div className="flex-1 bg-slate-800/30 rounded-2xl border border-slate-700/50 overflow-hidden">
+                <div className="flex-1 bg-slate-800/30 rounded-2xl border border-slate-700/50 overflow-hidden shadow-2xl">
                   <AIChat />
                 </div>
               </div>
             } />
           </Routes>
+          
+          {/* Floating Chat - Dashboard Only */}
           {location.pathname === "/" && <FloatingChat />}
         </main>
       </div>
