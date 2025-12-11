@@ -42,7 +42,7 @@ export const uploadExcel = async (req, res) => {
         console.log("Total rows:", totalRows);
 
         let batch = [];
-        const batchSize = 10000; // prevent Render crash
+        const batchSize = 500;
 
         for (let rowNumber = 2; rowNumber <= totalRows; rowNumber++) {
             const r = sheet.getRow(rowNumber);
