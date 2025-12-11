@@ -1,5 +1,6 @@
 import XLSX from "xlsx";
 import Entry from "../model/Entry.js";
+import { progressEmitter } from "../utils/progress.js";
 
 // Convert Excel serial date → YYYY-MM-DD
 function fixDate(value) {
@@ -46,7 +47,7 @@ export const uploadExcel = async (req, res) => {
 
         console.log(`📊 Total rows detected: ${rows.length}`);
 
-        const batchSize = 1000;
+        const batchSize = 20000; //  50,000 per batch
         let batch = [];
 
         for (let i = 0; i < rows.length; i++) {
@@ -93,6 +94,7 @@ export const uploadExcel = async (req, res) => {
                 // Percentage progress
                 const percent = (((i + 1) / rows.length) * 100).toFixed(2);
                 console.log(`⏳ Progress: ${percent}%`);
+                progressEmitter.emit("progress", { percent });
             }
         }
 
@@ -107,6 +109,7 @@ export const uploadExcel = async (req, res) => {
             message: "Excel uploaded successfully",
             rows: rows.length,
             time: totalTime,
+            status: true
         });
     } catch (err) {
         console.error("❌ Upload failed:", err);

@@ -5,11 +5,14 @@ import { connectDB } from "./config/db.js";
 import uploadRoutes from "./routes/uploadRoutes.js";
 import aiRoutes from "./routes/aiRoutes.js";
 import queryRoutes from "./routes/queryRoutes.js";
+import { progressEmitter } from "./utils/progress.js";
 
 dotenv.config();
 connectDB();
 
 const app = express();
+const PORT = process.env.PORT || 5000;
+
 app.use(cors({
     origin: process.env.CLIENT_URL || "*",
     credentials: true,
@@ -21,11 +24,27 @@ app.use("/api", uploadRoutes);
 app.use("/api", aiRoutes);
 app.use("/api/query", queryRoutes);
 
-app.get('/' , (req ,res) => {
+app.get('/', (req, res) => {
     res.send("server is working fine ✅");
 })
 
-const PORT = process.env.PORT || 5000;
+
+// to analyse current progress of file upload
+app.get("/api/progress", (req, res) => {
+    res.setHeader("Content-Type", "text/event-stream");
+    res.setHeader("Cache-Control", "no-cache");
+    res.setHeader("Connection", "keep-alive");
+
+    const sendProgress = (data) => {
+        res.write(`data: ${JSON.stringify(data)}\n\n`);
+    };
+
+    progressEmitter.on("progress", sendProgress);
+
+    req.on("close", () => {
+        progressEmitter.removeListener("progress", sendProgress);
+    });
+});
 
 // THIS MUST RUN IN RENDER
 app.listen(PORT, () => {

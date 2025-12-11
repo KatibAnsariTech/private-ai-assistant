@@ -61,7 +61,7 @@ export const uploadExcel = async (file) => {
         headers: {
             'Content-Type': 'multipart/form-data',
         },
-        timeout: 120000, // 2 minutes for large files
+        timeout: 0, // 2 minutes for large files
         onUploadProgress: (progressEvent) => {
             const percentCompleted = Math.round((progressEvent.loaded * 100) / progressEvent.total);
             console.log(`Upload Progress: ${percentCompleted}%`);
