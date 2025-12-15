@@ -30,11 +30,10 @@ function Dashboard({ refreshTrigger }) {
     { key: 'JournalEntryCostCenter', label: 'Cost Center' },
     {
       key: 'InitiatorStatus', label: 'Initiator Status', render: (val) => (
-        <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-          val === 'Approved' ? 'bg-green-500/20 text-green-400' :
+        <span className={`px-2 py-1 rounded-full text-xs font-medium ${val === 'Approved' ? 'bg-green-500/20 text-green-400' :
           val === 'Rejected' ? 'bg-red-500/20 text-red-400' :
-          'bg-yellow-500/20 text-yellow-400'
-        }`}>
+            'bg-yellow-500/20 text-yellow-400'
+          }`}>
           {val}
         </span>
       )
@@ -146,39 +145,32 @@ function App() {
   // IMPROVED: Better categorized questions
   const commonQuestions = [
     {
-      category: "📊 Graphs & Charts",
+      category: "📊 Statistics",
       questions: [
-        "Show graph of credit vs debit",
-        "Graph of top 10 vendors",
-        "Visualize cost center distribution",
-        "Chart of initiator status breakdown"
+        "How many total entries are there?",
+        "Count all unique Journal Entry Type ",
+        "Show total, average, max and min amount",
+        "Which vendor has highest entries?",
+        "Show cost center distribution"
       ]
     },
     {
-      category: "📋 Data Tables",
+      category: "🔍 Filters",
       questions: [
-        "Show me the top 10 entries",
-        "Show the last 20 entries",
-        "List unique vendors",
-        "Show unique cost centers"
+        "Show entries for vendor {vendor name}",
+        "Show entries where amount > {amount}",
+        "Show entries from {startDate} to {endDate}",
+        "Show entries approved by {status}",
+        "Find document number {documentNumber}"
       ]
     },
     {
-      category: "🔍 Search & Filter",
+      category: "📈 Trends",
       questions: [
-        "Show entries where amount > 100000",
-        "Find all entries for vendor TCS",
-        "Show records from 2024 only",
-        "Show all approved by initiator"
-      ]
-    },
-    {
-      category: "📈 Statistics",
-      questions: [
-        "What is the total amount?",
-        "Calculate average amount",
-        "Which vendor has the highest entries?",
-        "How many credit and debit entries?"
+        "Vendor {vendor} monthly trend",
+        "Vendor {vendor} this month vs last month",
+        "Monthly amount trend",
+        "Credit vs Debit monthly trend"
       ]
     }
   ];
@@ -204,21 +196,19 @@ function App() {
             <div className="hidden md:flex items-center gap-2">
               <Link
                 to="/"
-                className={`px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-2 ${
-                  location.pathname === '/'
-                    ? 'bg-slate-800 text-white shadow-lg shadow-primary-500/10'
-                    : 'text-slate-400 hover:text-white hover:bg-slate-800/50'
-                }`}
+                className={`px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-2 ${location.pathname === '/'
+                  ? 'bg-slate-800 text-white shadow-lg shadow-primary-500/10'
+                  : 'text-slate-400 hover:text-white hover:bg-slate-800/50'
+                  }`}
               >
                 <LayoutDashboard className="w-4 h-4" /> Dashboard
               </Link>
               <Link
                 to="/chat"
-                className={`px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-2 ${
-                  location.pathname === '/chat'
-                    ? 'bg-slate-800 text-white shadow-lg shadow-primary-500/10'
-                    : 'text-slate-400 hover:text-white hover:bg-slate-800/50'
-                }`}
+                className={`px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-2 ${location.pathname === '/chat'
+                  ? 'bg-slate-800 text-white shadow-lg shadow-primary-500/10'
+                  : 'text-slate-400 hover:text-white hover:bg-slate-800/50'
+                  }`}
               >
                 <MessageSquare className="w-4 h-4" /> AI Assistant
               </Link>
@@ -265,7 +255,7 @@ function App() {
                   <Sparkles className="w-5 h-5 text-accent-purple" />
                   <h3 className="text-lg font-bold text-white">Try These Questions</h3>
                 </div>
-                
+
                 <div className="space-y-6 max-h-[calc(100vh-200px)] overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-slate-700 scrollbar-track-transparent">
                   {commonQuestions.map((category, idx) => (
                     <div key={idx} className="space-y-2">
@@ -311,7 +301,7 @@ function App() {
               </div>
             } />
           </Routes>
-          
+
           {/* Floating Chat - Dashboard Only */}
           {location.pathname === "/" && <FloatingChat />}
         </main>

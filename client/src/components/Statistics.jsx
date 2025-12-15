@@ -57,33 +57,19 @@ const Statistics = () => {
                 </button>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <StatCard
-                    title="Total Entries"
+                    title="Total Documents"
                     value={stats?.totalEntries?.toLocaleString() || '0'}
                     icon={FileText}
                     color="bg-blue-500 text-blue-500"
                     loading={loading}
                 />
                 <StatCard
-                    title="Total Amount"
-                    value={`₹${stats?.amountStats?.totalAmount?.toLocaleString() || '0'}`}
-                    icon={TrendingUp}
-                    color="bg-green-500 text-green-500"
-                    loading={loading}
-                />
-                <StatCard
-                    title="Unique Vendors"
+                    title="Unique Vendor Names"
                     value={stats?.uniqueCounts?.vendors?.toLocaleString() || '0'}
                     icon={Users}
                     color="bg-purple-500 text-purple-500"
-                    loading={loading}
-                />
-                <StatCard
-                    title="Avg Amount"
-                    value={`₹${Math.round(stats?.amountStats?.avgAmount || 0).toLocaleString()}`}
-                    icon={BarChart3}
-                    color="bg-orange-500 text-orange-500"
                     loading={loading}
                 />
             </div>

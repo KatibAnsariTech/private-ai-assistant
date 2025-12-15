@@ -80,7 +80,7 @@ export const askAI = async (question) => {
     if (!question || !question.trim()) {
         throw new Error('Question cannot be empty');
     }
-    
+
     return api.post('/api/ask', { question: question.trim() });
 };
 
