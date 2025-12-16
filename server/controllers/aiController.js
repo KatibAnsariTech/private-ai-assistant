@@ -48,7 +48,14 @@ export const askAi = async (req, res) => {
     console.log("✅ Calling function:", decision.helperFunction);
     console.log("📋 Parameters:", decision.parameters);
 
-    const data = await fn(...Object.values(decision.parameters || {}));
+    let data;
+
+    if (decision.helperFunction === "getEntriesByAmount") {
+      const { min = null, max = null } = decision.parameters || {};
+      data = await fn(min, max);
+    } else {
+      data = await fn(...Object.values(decision.parameters || {}));
+    }
 
     console.log("📊 Data returned:", Array.isArray(data) ? `${data.length} items` : typeof data);
     if (Array.isArray(data) && data.length > 0) {
@@ -68,9 +75,9 @@ export const askAi = async (req, res) => {
       data &&
       typeof data.count === "number"
     ) {
-      presentType = "line";
+      presentType = "bar";
       graph = {
-        type: "line",
+        type: "bar",
         x: ["Start", "Current"],
         y: [0, data.count],
         label: "Total Entries"
@@ -81,7 +88,7 @@ export const askAi = async (req, res) => {
 
       // Month vs Count
       if (data[0].month && data[0].count !== undefined) {
-        presentType = decision.graphType || "line";
+        presentType = decision.graphType || "bar";
         graph = {
           type: presentType,
           x: data.map(d => d.month),
@@ -92,7 +99,7 @@ export const askAi = async (req, res) => {
 
       // Month vs Amount
       else if (data[0].month && data[0].totalAmount !== undefined) {
-        presentType = decision.graphType || "line";
+        presentType = decision.graphType || "bar";
         graph = {
           type: presentType,
           x: data.map(d => d.month),
@@ -106,9 +113,9 @@ export const askAi = async (req, res) => {
         (data[0].type || data[0].value || data[0].vendorName) &&
         data[0].count !== undefined
       ) {
-        presentType = decision.graphType || "bar";
+        presentType = "bar";
         graph = {
-          type: presentType,
+          type: "bar",
           x: data.map(d => d.type || d.value || d.vendorName),
           y: data.map(d => d.count),
           label: decision.intent
@@ -133,12 +140,27 @@ export const askAi = async (req, res) => {
     // Always show as LINE chart in ascending date order
     if (!graph && Array.isArray(data) && data.length > 0) {
       if (data[0].month && data[0].vendorName && data[0].totalAmount !== undefined) {
-        presentType = "line";
+        presentType = "bar";
         graph = {
-          type: "line",
+          type: "bar",
           x: data.map(d => d.month),
           y: data.map(d => d.totalAmount),
           label: `${data[0].vendorName} - Monthly Trend`
+        };
+      }
+    }
+
+    // ✅ AUTO-GRAPH: Amount range queries (from getEntriesByAmount)
+    // Data structure: [{totalCount, uniqueVendorCount}]
+    // Show as LINE chart with count data points
+    if (!graph && Array.isArray(data) && data.length > 0) {
+      if (data[0].totalCount !== undefined && data[0].uniqueVendorCount !== undefined) {
+        presentType = "bar";
+        graph = {
+          type: "bar",
+          x: ["Total Entries", "Unique Vendors"],
+          y: [data[0].totalCount, data[0].uniqueVendorCount],
+          label: decision.intent || "Amount Range Statistics"
         };
       }
     }

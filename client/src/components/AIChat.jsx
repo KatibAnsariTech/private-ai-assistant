@@ -145,7 +145,7 @@ const AIChat = () => {
                   }));
 
                   // Sort by value descending for better visualization
-                  const chartData = [...allData].sort((a, b) => b.value - a.value);
+                  const chartData = allData;
 
                   // Use presentType from message, fallback to graph.type
                   const chartType = msg.presentType || msg.graph.type || "bar";

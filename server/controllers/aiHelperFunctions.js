@@ -262,11 +262,12 @@ export const getEntriesByVendor = async (vendor) => {
  * 
  * @param {*} min 
  * @param {*} max 
- * @returns 10 entries , total number of entries present in between that amount
+ * @returns total count of unique vendor name , the count of data , between those min max amount 
  */
 
 export const getEntriesByAmount = async (min, max = null) => {
-  return Entry.aggregate([
+  // Build pipeline dynamically to avoid $and: [] issue
+  const pipeline = [
     // 1️⃣ Normalize amount safely
     {
       $addFields: {
@@ -314,44 +315,80 @@ export const getEntriesByAmount = async (min, max = null) => {
       }
     },
 
-    // 2️⃣ Remove invalid amounts (text, empty, null)
+    // 2️⃣ Remove invalid amounts
     {
       $match: {
         amountClean: { $ne: null }
       }
-    },
+    }
+  ];
 
-    // 3️⃣ Apply min / max filter
-    {
+  // 3️⃣ Apply min / max filter ONLY if provided
+  // Build conditions array dynamically
+  const conditions = [];
+  if (min !== null && min !== undefined) {
+    conditions.push({ $gte: ["$amountClean", min] });
+  }
+  if (max !== null && max !== undefined) {
+    conditions.push({ $lte: ["$amountClean", max] });
+  }
+
+  // Only add the $match stage if we have conditions
+  if (conditions.length > 0) {
+    pipeline.push({
       $match: {
-        $expr: {
-          $and: [
-            ...(min !== null ? [{ $gte: ["$amountClean", min] }] : []),
-            ...(max !== null ? [{ $lte: ["$amountClean", max] }] : [])
-          ]
-        }
+        $expr: conditions.length === 1 ? conditions[0] : { $and: conditions }
       }
-    },
+    });
+  }
 
-    // 4️⃣ Facet → rows + total count
-    {
-      $facet: {
-        rows: [{ $limit: 50 }],
-        totalCount: [{ $count: "count" }]
-      }
-    },
+  // 4️⃣ Facet → rows + totalCount + uniqueVendorCount
+  pipeline.push({
+    $facet: {
 
-    // 5️⃣ Shape output
-    {
-      $project: {
-        rows: 1,
-        totalCount: {
-          $ifNull: [{ $arrayElemAt: ["$totalCount.count", 0] }, 0]
-        }
+      totalCount: [
+        { $count: "count" }
+      ],
+
+      uniqueVendorCount: [
+        {
+          $match: {
+            JournalEntryVendorName: { $nin: ["", null] }
+          }
+        },
+        {
+          $group: {
+            _id: {
+              $toUpper: {
+                $trim: { input: "$JournalEntryVendorName" }
+              }
+            }
+          }
+        },
+        { $count: "count" }
+      ]
+    }
+  });
+
+  // 5️⃣ Final response shape
+  pipeline.push({
+    $project: {
+      rows: 1,
+      totalCount: {
+        $ifNull: [{ $arrayElemAt: ["$totalCount.count", 0] }, 0]
+      },
+      uniqueVendorCount: {
+        $ifNull: [{ $arrayElemAt: ["$uniqueVendorCount.count", 0] }, 0]
       }
     }
-  ]);
+  });
+
+  console.log("📊 getEntriesByAmount called with min:", min, "max:", max);
+  console.log("📊 Conditions count:", conditions.length);
+
+  return Entry.aggregate(pipeline);
 };
+
 
 
 
@@ -495,3 +532,97 @@ export const getEntriesByStatus = async (field, status) => {
 //     DocumentNumberOrErrorMessage: doc
 //   }).lean();
 // };
+
+
+
+/**
+ * 
+ * @returns monthly total amount and month
+ */
+// 📈 Monthly Total Amount Trend
+export const amountMonthlyTrend = async () => {
+  return Entry.aggregate([
+    // 1️⃣ Parse date + clean amount
+    {
+      $addFields: {
+        postingDateClean: {
+          $dateFromString: {
+            dateString: { $substrBytes: ["$PostingDate", 4, 20] },
+            format: "%b %d %Y %H:%M:%S",
+            onError: null,
+            onNull: null
+          }
+        },
+        amountClean: {
+          $switch: {
+            branches: [
+              {
+                case: { $isNumber: "$JournalEntryAmount" },
+                then: "$JournalEntryAmount"
+              },
+              {
+                case: {
+                  $and: [
+                    { $eq: [{ $type: "$JournalEntryAmount" }, "string"] },
+                    {
+                      $regexMatch: {
+                        input: { $trim: { input: "$JournalEntryAmount" } },
+                        regex:
+                          /^-?\d{1,3}(,\d{3})*(\.\d+)?$|^-?\d+(\.\d+)?$/
+                      }
+                    }
+                  ]
+                },
+                then: {
+                  $toDouble: {
+                    $replaceAll: {
+                      input: { $trim: { input: "$JournalEntryAmount" } },
+                      find: ",",
+                      replacement: ""
+                    }
+                  }
+                }
+              }
+            ],
+            default: null
+          }
+        }
+      }
+    },
+
+    // 2️⃣ Remove invalid rows
+    {
+      $match: {
+        postingDateClean: { $ne: null },
+        amountClean: { $ne: null }
+      }
+    },
+
+    // 3️⃣ Group by month
+    {
+      $group: {
+        _id: {
+          month: {
+            $dateToString: {
+              format: "%Y-%m",
+              date: "$postingDateClean"
+            }
+          }
+        },
+        totalAmount: { $sum: "$amountClean" }
+      }
+    },
+
+    // 4️⃣ Sort old → new
+    { $sort: { "_id.month": 1 } },
+
+    // 5️⃣ Final output
+    {
+      $project: {
+        _id: 0,
+        month: "$_id.month",
+        totalAmount: 1
+      }
+    }
+  ]);
+};

@@ -342,114 +342,119 @@ export const combineFilters = async (filters) => {
 };
 
 /**
- * Get summary statistics (keeps previous robust cleaning steps)
+ * Get summary statistics using a single $facet aggregation
  */
 export const getStatistics = async () => {
     try {
-        const totalEntries = await Entry.countDocuments();
-
-        if (totalEntries === 0) {
-            return {
-                totalEntries: 0,
-                amountStats: { totalAmount: 0, avgAmount: 0, maxAmount: 0, minAmount: 0 },
-                uniqueCounts: { vendors: 0 },
-            };
-        }
-
-        const amountAgg = await Entry.aggregate([
+        const result = await Entry.aggregate([
             {
-                $addFields: {
-                    cleanedAmount: {
-                        $trim: {
-                            input: {
-                                $replaceAll: {
-                                    input: {
-                                        $replaceAll: {
-                                            input: {
-                                                $replaceAll: {
-                                                    input: "$JournalEntryAmount",
-                                                    find: ",",
-                                                    replacement: ""
-                                                }
-                                            },
-                                            find: "₹",
-                                            replacement: ""
-                                        }
-                                    },
-                                    find: " ",
-                                    replacement: ""
+                $facet: {
+                    // 1️⃣ Total entries
+                    totalEntries: [
+                        { $count: "count" }
+                    ],
+
+                    // 2️⃣ Amount stats
+                    amountStats: [
+                        { $match: { JournalEntryAmount: { $exists: true, $ne: null } } },
+
+                        // force string
+                        {
+                            $addFields: {
+                                amountStr: {
+                                    $trim: {
+                                        input: { $toString: "$JournalEntryAmount" }
+                                    }
                                 }
                             }
+                        },
+
+                        // clean symbols
+                        {
+                            $addFields: {
+                                amountStr: {
+                                    $replaceAll: {
+                                        input: {
+                                            $replaceAll: {
+                                                input: {
+                                                    $replaceAll: {
+                                                        input: "$amountStr",
+                                                        find: ",",
+                                                        replacement: ""
+                                                    }
+                                                },
+                                                find: "₹",
+                                                replacement: ""
+                                            }
+                                        },
+                                        find: " ",
+                                        replacement: ""
+                                    }
+                                }
+                            }
+                        },
+
+                        // convert to number
+                        {
+                            $addFields: {
+                                amountNumeric: {
+                                    $convert: {
+                                        input: "$amountStr",
+                                        to: "double",
+                                        onError: 0,
+                                        onNull: 0
+                                    }
+                                }
+                            }
+                        },
+
+                        // aggregate
+                        {
+                            $group: {
+                                _id: null,
+                                totalAmount: { $sum: "$amountNumeric" },
+                                avgAmount: { $avg: "$amountNumeric" },
+                                maxAmount: { $max: "$amountNumeric" },
+                                minAmount: { $min: "$amountNumeric" }
+                            }
                         }
-                    }
-                }
-            },
-            {
-                $addFields: {
-                    cleanedAmount: {
-                        $cond: [
-                            { $regexMatch: { input: "$cleanedAmount", regex: /-$/ } },
-                            { $multiply: [-1, { $toDouble: { $substr: ["$cleanedAmount", 0, { $subtract: [{ $strLenCP: "$cleanedAmount" }, 1] }] } }] },
-                            "$cleanedAmount"
-                        ]
-                    }
-                }
-            },
-            {
-                $addFields: {
-                    cleanedAmount: {
-                        $cond: [
-                            { $regexMatch: { input: "$cleanedAmount", regex: /^\(.*\)$/ } },
-                            {
-                                $multiply: [
-                                    -1,
-                                    {
-                                        $toDouble: {
-                                            $substr: [
-                                                "$cleanedAmount",
-                                                1,
-                                                { $subtract: [{ $strLenCP: "$cleanedAmount" }, 2] }
-                                            ]
+                    ],
+
+                    // 3️⃣ Unique vendors
+                    uniqueVendors: [
+                        { $match: { JournalEntryVendorName: { $exists: true, $ne: null } } },
+                        {
+                            $group: {
+                                _id: {
+                                    $toUpper: {
+                                        $trim: {
+                                            input: { $toString: "$JournalEntryVendorName" }
                                         }
                                     }
-                                ]
-                            },
-                            "$cleanedAmount"
-                        ]
-                    }
-                }
-            },
-            {
-                $addFields: {
-                    amountNumeric: {
-                        $convert: {
-                            input: "$cleanedAmount",
-                            to: "double",
-                            onError: 0,
-                            onNull: 0
-                        }
-                    }
-                }
-            },
-            {
-                $group: {
-                    _id: null,
-                    totalAmount: { $sum: "$amountNumeric" },
-                    avgAmount: { $avg: "$amountNumeric" },
-                    maxAmount: { $max: "$amountNumeric" },
-                    minAmount: { $min: "$amountNumeric" }
+                                }
+                            }
+                        },
+                        { $count: "count" }
+                    ]
                 }
             }
         ]);
 
-        const uniqueVendors = await Entry.distinct("JournalEntryVendorName", {
-            JournalEntryVendorName: { $nin: ["", null, undefined] }
-        });
+        const stats = result[0] || {};
 
         return {
-            totalEntries,
-            amountStats: amountAgg[0] || { totalAmount: 0, avgAmount: 0, maxAmount: 0, minAmount: 0 },
-            uniqueCounts: { vendors: uniqueVendors.length }
+            totalEntries: stats.totalEntries?.[0]?.count || 0,
+
+            amountStats: stats.amountStats?.[0] || {
+                totalAmount: 0,
+                avgAmount: 0,
+                maxAmount: 0,
+                minAmount: 0
+            },
+
+            uniqueCounts: {
+                vendors: stats.uniqueVendors?.[0]?.count || 0
+            }
         };
 
     } catch (error) {
@@ -461,6 +466,7 @@ export const getStatistics = async () => {
         };
     }
 };
+
 
 export const getAllWithPagination = async (page = 1, limit = 50, sortBy = "excelRowNumber", sortOrder = 1) => {
     const skip = (page - 1) * limit;

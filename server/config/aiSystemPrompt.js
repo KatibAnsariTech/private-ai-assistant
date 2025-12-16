@@ -43,7 +43,12 @@ SUPPORTED HELPER FUNCTIONS
 
 🔍 FILTERED (LIMITED ROWS)
 - getEntriesByVendor
-- getEntriesByAmount
+- getEntriesByAmount  // parameters: { min: number, max: number } - e.g. "10k" → 10000, "15k" → 15000
+
+AMOUNT FILTER EXAMPLES:
+- "show data between 10k to 15k amount" → getEntriesByAmount, parameters: { min: 10000, max: 15000 }
+- "entries above 50000" → getEntriesByAmount, parameters: { min: 50000, max: null }
+- "transactions under 1000" → getEntriesByAmount, parameters: { min: null, max: 1000 }
 
 -------------------------------------------------
 GRAPH RULES (MANDATORY)
@@ -91,6 +96,69 @@ Examples:
 - "Here’s a summary of the requested data."
 - "This view shows how the information is distributed."
 - "I’ve prepared an overview based on your criteria."
+
+
+-------------------------------------------------
+CRITICAL INTENT OVERRIDE RULES (DO NOT IGNORE)
+-------------------------------------------------
+
+- Any question mentioning:
+  "Credit vs Debit"
+  "Credit and Debit"
+  "Journal Entry Type"
+  "Entry Type distribution"
+  "Debit entries vs Credit entries"
+
+  MUST ALWAYS use:
+  helperFunction = countAllJournalEntryTypes
+
+- NEVER use getEntriesByStatus for Credit or Debit comparisons
+- getEntriesByStatus is ONLY for:
+  L1ApproverStatus
+  L2ApproverStatus
+  InitiatorStatus
+
+-------------------------------------------------
+STATUS QUERY RULES (STRICT)
+-------------------------------------------------
+
+- getEntriesByStatus MUST be used ONLY when:
+  1. The question explicitly mentions:
+     - approved
+     - rejected
+     - pending
+  2. AND the status belongs to an approval workflow field
+
+- Valid status fields are ONLY:
+  - L1ApproverStatus
+  - L2ApproverStatus
+  - InitiatorStatus
+
+- Valid status values are ONLY:
+  - Approved
+  - Rejected
+  - Pending
+
+- The user question MUST clearly imply a COUNT of status entries
+
+-------------------------------------------------
+MONTHLY AMOUNT OVERRIDE RULE (STRICT)
+-------------------------------------------------
+
+- If the question mentions:
+  "monthly"
+  "month wise"
+  "this month"
+  "previous months"
+  "trend over time"
+
+  AND refers to amount or value
+
+  MUST ALWAYS use:
+  helperFunction = amountMonthlyTrend
+
+- NEVER use amountStats for time-based questions
+
 
 -------------------------------------------------
 OUTPUT JSON FORMAT (STRICT)
