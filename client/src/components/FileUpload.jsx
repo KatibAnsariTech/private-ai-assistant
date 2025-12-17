@@ -73,7 +73,8 @@ const FileUpload = ({ onUploadSuccess }) => {
             const response = await uploadExcel(file);
 
             setStatus('success');
-            setMessage(`Uploaded ${response.data.rows} rows in ${response.data.time}s`);
+            const formattedTime = formatDuration(response.data.time);
+            setMessage(`Uploaded ${response.data.rows} rows in ${formattedTime}`);
 
             if (onUploadSuccess) onUploadSuccess();
 
@@ -230,3 +231,16 @@ const FileUpload = ({ onUploadSuccess }) => {
 };
 
 export default FileUpload;
+
+function formatDuration(seconds) {
+    const total = Math.floor(seconds);
+
+    if (total < 60) {
+        return `${total}s`;
+    }
+
+    const mins = Math.floor(total / 60);
+    const secs = total % 60;
+
+    return `${mins}m ${secs}s`;
+}

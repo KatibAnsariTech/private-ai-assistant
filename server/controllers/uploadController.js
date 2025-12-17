@@ -63,7 +63,7 @@ export const uploadExcel = async (req, res) => {
 
         // ✅ PASS 2: Actual upload
         const workbook = new Excel.stream.xlsx.WorkbookReader(filePath);
-        const batchSize = 500;
+        const batchSize = 10000;
         let batch = [];
         let processed = 0;
 
