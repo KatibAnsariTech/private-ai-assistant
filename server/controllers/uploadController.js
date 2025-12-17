@@ -1,6 +1,8 @@
 import Excel from "exceljs";
-import { progressEmitter } from "../utils/progress.js";
+import fs from "fs";
 import Entry from "../model/Entry.js";
+import { progressEmitter } from "../utils/progress.js";
+
 
 function toStr(value) {
     if (!value) return "";
@@ -25,7 +27,22 @@ function fixDate(value) {
     return String(value);
 }
 
+async function countRows(filePath) {
+    let total = 0;
+    const workbook = new Excel.stream.xlsx.WorkbookReader(filePath);
+
+    for await (const worksheet of workbook) {
+        for await (const row of worksheet) {
+            if (row.number === 1) continue;
+            total++;
+        }
+    }
+    return total;
+}
+
+
 export const uploadExcel = async (req, res) => {
+    const startTime = Date.now();
     try {
         console.log("⚡ Upload started...");
 
@@ -33,71 +50,89 @@ export const uploadExcel = async (req, res) => {
             return res.status(400).json({ message: "No file uploaded" });
         }
 
-        const workbook = new Excel.Workbook();
-        await workbook.xlsx.load(req.file.buffer);
+        const filePath = req.file.path;
 
-        const sheet = workbook.getWorksheet(1);
-        const totalRows = sheet.actualRowCount;
+        // ✅ PASS 1: Count rows
+        const totalRows = await countRows(filePath);
 
-        console.log("Total rows:", totalRows);
+        // Inform UI upload started
+        progressEmitter.emit("progress", {
+            status: "started",
+            totalRows
+        });
 
-        let batch = [];
+        // ✅ PASS 2: Actual upload
+        const workbook = new Excel.stream.xlsx.WorkbookReader(filePath);
         const batchSize = 500;
+        let batch = [];
+        let processed = 0;
 
-        for (let rowNumber = 2; rowNumber <= totalRows; rowNumber++) {
-            const r = sheet.getRow(rowNumber);
+        for await (const worksheet of workbook) {
+            for await (const row of worksheet) {
+                if (row.number === 1) continue;
 
-            batch.push({
-                zvolvWID: toStr(r.getCell(1).value),
-                WID: toStr(r.getCell(2).value),
-                DocumentDate: fixDate(r.getCell(3).value),
-                PostingDate: fixDate(r.getCell(4).value),
-                JournalEntrySrNo: toStr(r.getCell(5).value),
-                JournalEntryBusinessArea: toStr(r.getCell(6).value),
-                JournalEntryAccountType: toStr(r.getCell(7).value),
-                JournalEntryType: toStr(r.getCell(8).value),
-                JournalEntryVendorName: toStr(r.getCell(9).value),
-                JournalEntryVendorNumber: toStr(r.getCell(10).value),
-                JournalEntryCostCenter: toStr(r.getCell(11).value),
-                JournalEntryProfitCenter: toStr(r.getCell(12).value),
-                JournalEntryAmount: toStr(r.getCell(13).value),
-                JournalEntryPersonalNumber: toStr(r.getCell(14).value),
-                InitiatorName: toStr(r.getCell(15).value),
-                InitiatorStatus: toStr(r.getCell(16).value),
-                L1ApproverName: toStr(r.getCell(17).value),
-                L1ApproverStatus: toStr(r.getCell(18).value),
-                L2ApproverName: toStr(r.getCell(19).value),
-                L2ApproverStatus: toStr(r.getCell(20).value),
-                DocumentNumberOrErrorMessage: toStr(r.getCell(21).value),
-                ReversalDocumentNumber: toStr(r.getCell(22).value),
+                batch.push({
+                    zvolvWID: toStr(row.getCell(1).value),
+                    WID: toStr(row.getCell(2).value),
+                    DocumentDate: fixDate(row.getCell(3).value),
+                    PostingDate: fixDate(row.getCell(4).value),
+                    JournalEntrySrNo: toStr(row.getCell(5).value),
+                    JournalEntryBusinessArea: toStr(row.getCell(6).value),
+                    JournalEntryAccountType: toStr(row.getCell(7).value),
+                    JournalEntryType: toStr(row.getCell(8).value),
+                    JournalEntryVendorName: toStr(row.getCell(9).value),
+                    JournalEntryVendorNumber: toStr(row.getCell(10).value),
+                    JournalEntryCostCenter: toStr(row.getCell(11).value),
+                    JournalEntryProfitCenter: toStr(row.getCell(12).value),
+                    JournalEntryAmount: toStr(row.getCell(13).value),
+                    JournalEntryPersonalNumber: toStr(row.getCell(14).value),
+                    InitiatorName: toStr(row.getCell(15).value),
+                    InitiatorStatus: toStr(row.getCell(16).value),
+                    L1ApproverName: toStr(row.getCell(17).value),
+                    L1ApproverStatus: toStr(row.getCell(18).value),
+                    L2ApproverName: toStr(row.getCell(19).value),
+                    L2ApproverStatus: toStr(row.getCell(20).value),
+                    DocumentNumberOrErrorMessage: toStr(row.getCell(21).value),
+                    ReversalDocumentNumber: toStr(row.getCell(22).value),
+                    excelRowNumber: row.number
+                });
 
-                excelRowNumber: rowNumber
-            });
+                if (batch.length === batchSize) {
+                    await Entry.insertMany(batch, { ordered: false });
+                    processed += batch.length;
+                    batch = [];
 
-            // when batch fills → insert
-            if (batch.length === batchSize) {
-                await Entry.insertMany(batch);
-                batch = [];
+                    const percent = Math.round((processed / totalRows) * 100);
 
-                // send progress update
-                const percent = ((rowNumber / totalRows) * 100).toFixed(2);
-                progressEmitter.emit("progress", { percent });
-
-                console.log("Progress:", percent + "%");
+                    progressEmitter.emit("progress", {
+                        processed,
+                        totalRows,
+                        percent
+                    });
+                }
             }
         }
 
-        // insert leftover rows
-        if (batch.length > 0) {
-            await Entry.insertMany(batch);
+        if (batch.length) {
+            await Entry.insertMany(batch, { ordered: false });
+            processed += batch.length;
         }
 
-        progressEmitter.emit("progress", { percent: 100 });
+        fs.unlinkSync(filePath);
+
+        progressEmitter.emit("progress", {
+            status: "completed",
+            percent: 100,
+            processed
+        });
+
+        const timeTaken = ((Date.now() - startTime) / 1000).toFixed(2);
 
         res.json({
-            status: true,
+            success: true,
             message: "Upload completed",
-            rows: totalRows
+            rows: processed,
+            time: timeTaken
         });
 
     } catch (err) {
