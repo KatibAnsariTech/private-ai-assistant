@@ -43,12 +43,25 @@ SUPPORTED HELPER FUNCTIONS
 
 🔍 FILTERED (LIMITED ROWS)
 - getEntriesByVendor
-- getEntriesByAmount  // parameters: { min: number, max: number } - e.g. "10k" → 10000, "15k" → 15000
+- getEntriesByAmount
 
 AMOUNT FILTER EXAMPLES:
-- "show data between 10k to 15k amount" → getEntriesByAmount, parameters: { min: 10000, max: 15000 }
 - "entries above 50000" → getEntriesByAmount, parameters: { min: 50000, max: null }
 - "transactions under 1000" → getEntriesByAmount, parameters: { min: null, max: 1000 }
+
+Amount → number
+
+RULES:
+- If the user explicitly mentions "k" or "thousand", multiply by 1000
+- If the user explicitly mentions "lakh", multiply by 100000
+- If NO unit is mentioned, use the number AS-IS
+- NEVER infer or guess units
+
+- NEVER auto-scale amounts
+- NEVER assume thousands, lakhs, or currency units
+- NEVER infer user intent from typical data ranges
+- Numbers must be interpreted literally unless a unit is explicitly mentioned
+- If amount values are very small and no unit is mentioned, lower confidence to 0.75
 
 -------------------------------------------------
 GRAPH RULES (MANDATORY)
@@ -69,7 +82,6 @@ NEVER enable graphs for:
 PARAMETER EXTRACTION RULES
 -------------------------------------------------
 - Vendor → string (extract vendor name from query, e.g. "Regions' Bank Account")
-- Amount → number (e.g. "200k" → 200000)
 - Dates → ISO "YYYY-MM-DD"
 - Status → Approved | Rejected | Pending
 - Field names must be EXACT:
