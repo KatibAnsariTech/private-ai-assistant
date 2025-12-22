@@ -182,8 +182,9 @@ export const amountStats = async () => {
 export const getEntriesByVendor = async (vendor) => {
   // Handle apostrophe variations: ' and '
   const vendorPattern = vendor
-    .replace(/'/g, "[''']")  // Match both straight and curly apostrophes
-    .replace(/\s+/g, "\\s+"); // Handle multiple spaces
+    .replace(/[.*+?^${}()|[\]\\]/g, "\\$&") // escape regex chars
+    .replace(/['’]/g, "['’]")               // straight + curly apostrophe
+    .replace(/\s+/g, "\\s+");
 
   return Entry.aggregate([
     // 1️⃣ Match vendor (case-insensitive, flexible apostrophes)
@@ -197,19 +198,47 @@ export const getEntriesByVendor = async (vendor) => {
     {
       $addFields: {
         amountClean: {
-          $toDouble: "$JournalEntryAmount"
+          $switch: {
+            branches: [
+              {
+                case: { $isNumber: "$JournalEntryAmount" },
+                then: "$JournalEntryAmount"
+              },
+              {
+                case: {
+                  $and: [
+                    { $eq: [{ $type: "$JournalEntryAmount" }, "string"] },
+                    {
+                      $regexMatch: {
+                        input: { $trim: { input: "$JournalEntryAmount" } },
+                        regex: /^-?\d{1,3}(,\d{3})*(\.\d+)?$|^-?\d+(\.\d+)?$/
+                      }
+                    }
+                  ]
+                },
+                then: {
+                  $toDouble: {
+                    $replaceAll: {
+                      input: { $trim: { input: "$JournalEntryAmount" } },
+                      find: ",",
+                      replacement: ""
+                    }
+                  }
+                }
+              }
+            ],
+            default: null
+          }
         },
         postingDateClean: {
           $dateFromString: {
-            dateString: {
-              // remove weekday + timezone
-              $substrBytes: ["$PostingDate", 4, 20]
-            },
-            format: "%b %d %Y %H:%M:%S",
+            dateString: "$PostingDate",
+            format: "%Y-%m-%d",
             onError: null,
             onNull: null
           }
         }
+
       }
     },
 
@@ -392,34 +421,41 @@ export const getEntriesByAmount = async (min, max = null) => {
 
 
 
-/**
- * 
- * @param {date} start 
- * @param {date} end 
- * @param {} field 
- * @returns from between start date to end date , return , vendor name , total amount , count
- */
 export const getEntriesByDate = async (
   start,
   end,
   field = "DocumentDate"
 ) => {
   return Entry.aggregate([
-    // 1️⃣ Parse date string → Date
+    // 1️⃣ Parse date ONLY if it matches ISO format
     {
       $addFields: {
         documentDateClean: {
-          $dateFromString: {
-            dateString: { $substrBytes: [`$${field}`, 4, 20] },
-            format: "%b %d %Y %H:%M:%S",
-            onError: null,
-            onNull: null
+          $cond: {
+            if: {
+              $and: [
+                { $eq: [{ $type: `$${field}` }, "string"] },
+                {
+                  $regexMatch: {
+                    input: `$${field}`,
+                    regex: /^\d{4}-\d{2}-\d{2}$/
+                  }
+                }
+              ]
+            },
+            then: {
+              $dateFromString: {
+                dateString: `$${field}`,
+                format: "%Y-%m-%d"
+              }
+            },
+            else: null
           }
         }
       }
     },
 
-    // 2️⃣ Filter by date range
+    // 2️⃣ Filter by date range (INCLUSIVE)
     {
       $match: {
         documentDateClean: {
@@ -433,39 +469,17 @@ export const getEntriesByDate = async (
     {
       $addFields: {
         amountClean: {
-          $switch: {
-            branches: [
-              // already number
-              {
-                case: { $isNumber: "$JournalEntryAmount" },
-                then: "$JournalEntryAmount"
-              },
-              // numeric-looking string only
-              {
-                case: {
-                  $and: [
-                    { $eq: [{ $type: "$JournalEntryAmount" }, "string"] },
-                    {
-                      $regexMatch: {
-                        input: { $trim: { input: "$JournalEntryAmount" } },
-                        regex:
-                          /^-?\d{1,3}(,\d{3})*(\.\d+)?$|^-?\d+(\.\d+)?$/
-                      }
-                    }
-                  ]
-                },
-                then: {
-                  $toDouble: {
-                    $replaceAll: {
-                      input: { $trim: { input: "$JournalEntryAmount" } },
-                      find: ",",
-                      replacement: ""
-                    }
-                  }
-                }
+          $convert: {
+            input: {
+              $replaceAll: {
+                input: { $trim: { input: "$JournalEntryAmount" } },
+                find: ",",
+                replacement: ""
               }
-            ],
-            default: null
+            },
+            to: "double",
+            onError: null,
+            onNull: null
           }
         }
       }
@@ -474,12 +488,12 @@ export const getEntriesByDate = async (
     // 4️⃣ Remove invalid rows
     {
       $match: {
-        JournalEntryVendorName: { $ne: "" },
-        amountClean: { $ne: null }
+        amountClean: { $ne: null },
+        JournalEntryVendorName: { $nin: ["", null] }
       }
     },
 
-    // 5️⃣ Group by UNIQUE vendor
+    // 5️⃣ Group by vendor
     {
       $group: {
         _id: {
@@ -493,12 +507,10 @@ export const getEntriesByDate = async (
       }
     },
 
-    // 6️⃣ Sort (highest amount first – optional)
-    {
-      $sort: { totalAmount: -1 }
-    },
+    // 6️⃣ Sort
+    { $sort: { totalAmount: -1 } },
 
-    // 7️⃣ Final response
+    // 7️⃣ Output
     {
       $project: {
         _id: 0,
@@ -522,9 +534,13 @@ export const getEntriesByStatus = async (field, status) => {
     [field]: new RegExp(`^${status}$`, "i")
   });
 
-  return { field, status, count };
+  return [
+    {
+      label: `${field} - ${status}`,
+      count
+    }
+  ];
 };
-
 
 
 // export const getEntryByDocument = async (doc) => {
@@ -624,5 +640,66 @@ export const amountMonthlyTrend = async () => {
         totalAmount: 1
       }
     }
+  ]);
+};
+
+
+
+/**
+ * @param {"L1" | "L2"} level
+ * @returns all unique approval statuses with count (Pending normalized)
+ */
+export const getApprovalOverview = async (level) => {
+  const statusField =
+    level === "L1" ? "L1ApproverStatus" : "L2ApproverStatus";
+
+  return Entry.aggregate([
+    {
+      $project: {
+        status: {
+          $cond: {
+            // Explicit Pending (any case)
+            if: {
+              $eq: [{ $toUpper: `$${statusField}` }, "PENDING"]
+            },
+            then: "Pending",
+
+            else: {
+              $cond: {
+                // Implicit Pending
+                if: {
+                  $or: [
+                    { $eq: [`$${statusField}`, ""] },
+                    { $eq: [`$${statusField}`, null] },
+                    { $not: [`$${statusField}`] }
+                  ]
+                },
+                then: "Pending",
+
+                // Everything else
+                else: `$${statusField}`
+              }
+            }
+          }
+        }
+      }
+    },
+
+    {
+      $group: {
+        _id: "$status",
+        count: { $sum: 1 }
+      }
+    },
+
+    {
+      $project: {
+        _id: 0,
+        status: "$_id",
+        count: 1
+      }
+    },
+
+    { $sort: { count: -1 } }
   ]);
 };

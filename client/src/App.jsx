@@ -161,16 +161,13 @@ function App() {
         "Show entries where amount > {amount}",
         "Show entries from {startDate} to {endDate}",
         "Show entries approved by {status}",
-        "Find document number {documentNumber}"
       ]
     },
     {
-      category: "📈 Trends",
+      category: "📈 Status",
       questions: [
-        "Vendor {vendor} monthly trend",
-        "Vendor {vendor} this month vs last month",
-        "Monthly amount trend",
-        "Credit vs Debit monthly trend"
+        "Show L1 approval overview",
+        "Show L2 approval overview"
       ]
     }
   ];

@@ -22,12 +22,12 @@ export const askAi = async (req, res) => {
 
     console.log("🤖 AI Decision:", JSON.stringify(decision, null, 2));
 
-    // ❌ If AI is not confident
+    // ❌ Low confidence
     if (!decision.helperFunction || decision.confidence < 0.7) {
-      console.log("❌ Low confidence or no helper function");
       return res.json({
         answer: "Unable to understand query",
         data: [],
+        graph: null,
         presentType: "table"
       });
     }
@@ -37,10 +37,10 @@ export const askAi = async (req, res) => {
       timeHelpers[decision.helperFunction];
 
     if (!fn) {
-      console.log("❌ Helper function not found:", decision.helperFunction);
       return res.json({
         answer: "Helper function not found",
         data: [],
+        graph: null,
         presentType: "table"
       });
     }
@@ -50,81 +50,116 @@ export const askAi = async (req, res) => {
 
     let data;
 
+    // ===== PARAMETER HANDLING =====
     if (decision.helperFunction === "getEntriesByAmount") {
       const { min = null, max = null } = decision.parameters || {};
       data = await fn(min, max);
-    } else {
+
+    } else if (decision.helperFunction === "getEntriesByStatus") {
+      const [[field, status]] = Object.entries(decision.parameters || {});
+      data = await fn(field, status);
+
+    } else if (decision.helperFunction === "topByField") {
+      data = await fn("JournalEntryVendorName");
+    }
+    else {
       data = await fn(...Object.values(decision.parameters || {}));
     }
 
-    console.log("📊 Data returned:", Array.isArray(data) ? `${data.length} items` : typeof data);
-    if (Array.isArray(data) && data.length > 0) {
-      console.log("📄 First item:", JSON.stringify(data[0], null, 2));
-    }
+    console.log(
+      "📊 Data returned:",
+      Array.isArray(data) ? `${data.length} items` : typeof data
+    );
 
     let graph = null;
-    let presentType = "table"; // ✅ DEFAULT
+    let presentType = "table";
 
-    /* =====================================================
-       GRAPH DECISION LOGIC (FINAL & CORRECT)
-       ===================================================== */
+    if (Array.isArray(data) && data.length > 0) {
 
-    // 🔹 SINGLE KPI → LINE FROM 0 → VALUE
-    if (
-      decision.helperFunction === "countAllEntries" &&
-      data &&
-      typeof data.count === "number"
-    ) {
-      presentType = "bar";
-      graph = {
-        type: "bar",
-        x: ["Start", "Current"],
-        y: [0, data.count],
-        label: "Total Entries"
-      };
-    }
-
-    if (decision.graph === true && Array.isArray(data) && data.length > 0) {
-
-      // Month vs Count
-      if (data[0].month && data[0].count !== undefined) {
-        presentType = decision.graphType || "bar";
+      // ⭐ NEW: APPROVAL OVERVIEW (L1 / L2)
+      if (
+        decision.helperFunction === "getApprovalOverview" &&
+        data[0].status !== undefined &&
+        data[0].count !== undefined
+      ) {
         graph = {
-          type: presentType,
+          type: "bar",
+          x: data.map(d => d.status),
+          y: data.map(d => d.count),
+          label: decision.intent
+        };
+      }
+
+      // 1️⃣ Journal Entry Type distribution
+      else if (decision.helperFunction === "countAllJournalEntryTypes") {
+        graph = {
+          type: "bar",
+          x: data.map(d => d.type),
+          y: data.map(d => d.count),
+          label: decision.intent
+        };
+      }
+
+      // 2️⃣ Top-by-field (single)
+      else if (
+        decision.helperFunction === "topByField" &&
+        data[0].value !== undefined &&
+        data[0].count !== undefined
+      ) {
+        graph = {
+          type: "bar",
+          x: [data[0].value],
+          y: [data[0].count],
+          label: decision.intent
+        };
+      }
+
+      // 3️⃣ Generic distribution
+      else if (
+        decision.helperFunction === "countByField" &&
+        data[0].value !== undefined &&
+        data[0].count !== undefined
+      ) {
+        graph = {
+          type: "bar",
+          x: data.map(d => d.value),
+          y: data.map(d => d.count),
+          label: decision.intent
+        };
+      }
+
+      // 4️⃣ Month vs Count
+      else if (data[0].month && data[0].count !== undefined) {
+        graph = {
+          type: "bar",
           x: data.map(d => d.month),
           y: data.map(d => d.count),
           label: decision.intent
         };
       }
 
-      // Month vs Amount
+      // 5️⃣ Month vs Amount
       else if (data[0].month && data[0].totalAmount !== undefined) {
-        presentType = decision.graphType || "bar";
         graph = {
-          type: presentType,
+          type: "bar",
           x: data.map(d => d.month),
           y: data.map(d => d.totalAmount),
           label: decision.intent
         };
       }
 
-      // Category vs Count
-      else if (
-        (data[0].type || data[0].value || data[0].vendorName) &&
-        data[0].count !== undefined
-      ) {
-        presentType = "bar";
+      // 6️⃣ Vendor vs Count
+      else if (data[0].vendorName && data[0].count !== undefined) {
         graph = {
           type: "bar",
-          x: data.map(d => d.type || d.value || d.vendorName),
+          x: data.map(d => d.vendorName),
           y: data.map(d => d.count),
           label: decision.intent
         };
       }
 
-      //  count
+      // 7️⃣ Label / Status count
       else if (data[0].label && data[0].count !== undefined) {
-        presentType = "bar"; // changed from pie
         graph = {
           type: "bar",
           x: data.map(d => d.label),
@@ -133,43 +168,30 @@ export const askAi = async (req, res) => {
         };
       }
 
-    }
-
-    // ✅ AUTO-GRAPH: Vendor monthly trends (from getEntriesByVendor)
-    // Data structure: [{vendorName, month, count, totalAmount}...]
-    // Always show as LINE chart in ascending date order
-    if (!graph && Array.isArray(data) && data.length > 0) {
-      if (data[0].month && data[0].vendorName && data[0].totalAmount !== undefined) {
-        presentType = "bar";
-        graph = {
-          type: "bar",
-          x: data.map(d => d.month),
-          y: data.map(d => d.totalAmount),
-          label: `${data[0].vendorName} - Monthly Trend`
-        };
-      }
-    }
-
-    // ✅ AUTO-GRAPH: Amount range queries (from getEntriesByAmount)
-    // Data structure: [{totalCount, uniqueVendorCount}]
-    // Show as LINE chart with count data points
-    if (!graph && Array.isArray(data) && data.length > 0) {
-      if (data[0].totalCount !== undefined && data[0].uniqueVendorCount !== undefined) {
-        presentType = "bar";
+      // 8️⃣ Amount range summary
+      else if (
+        data[0].totalCount !== undefined &&
+        data[0].uniqueVendorCount !== undefined
+      ) {
         graph = {
           type: "bar",
           x: ["Total Entries", "Unique Vendors"],
           y: [data[0].totalCount, data[0].uniqueVendorCount],
-          label: decision.intent || "Amount Range Statistics"
+          label: decision.intent
         };
       }
+    }
+
+    // 🔐 FINAL GUARANTEE
+    if (graph?.type) {
+      presentType = graph.type;
     }
 
     return res.json({
       answer: decision.message,
       data,
       graph,
-      presentType // ✅ UI relies ONLY on this
+      presentType
     });
 
   } catch (err) {

@@ -32,20 +32,32 @@ const COLORS = [
 
 // Custom Tooltip component for dark mode styling
 const CustomTooltip = ({ active, payload, label }) => {
-  if (active && payload && payload.length) {
-    return (
-      <div className="bg-slate-800/90 border border-slate-700/50 p-2 rounded-md shadow-lg text-sm text-white">
-        <p className="font-semibold text-slate-300">{label}</p>
-        {payload.map((item, index) => (
-          <p key={index} style={{ color: item.color || '#fff' }}>
-            {`${item.name || 'Value'}: ${item.value}`}
-          </p>
-        ))}
-      </div>
-    );
-  }
-  return null;
+  if (!active || !payload || !payload.length) return null;
+
+  const data = payload[0].payload;
+
+  return (
+    <div className="bg-slate-800/90 border border-slate-700/50 p-3 rounded-md shadow-lg text-sm text-white">
+      <p className="font-semibold text-slate-300 mb-1">{label}</p>
+
+      {/* COUNT */}
+      <p className="text-purple-400">
+        Count: <span className="text-white font-medium">{data.value}</span>
+      </p>
+
+      {/* TOTAL AMOUNT (only if exists) */}
+      {typeof data.amount === "number" && (
+        <p className="text-green-400">
+          Total Amount:{" "}
+          <span className="text-white font-medium">
+            {data.amount.toLocaleString()}
+          </span>
+        </p>
+      )}
+    </div>
+  );
 };
+
 
 const AIChat = () => {
   const [input, setInput] = useState("");
@@ -139,10 +151,14 @@ const AIChat = () => {
 
                 {/* GRAPH - Always show when available */}
                 {msg.graph?.x?.length > 0 && msg.graph?.y?.length > 0 && (() => {
-                  const allData = msg.graph.x.map((x, i) => ({
-                    name: String(x),
-                    value: msg.graph.y[i] ?? 0
-                  }));
+                  const allData = msg.graph.x.map((x, i) => {
+                    const row = msg.data?.[i] || {};
+                    return {
+                      name: String(x),
+                      value: msg.graph.y[i] ?? 0,          // COUNT
+                      amount: row.totalAmount ?? null      // TOTAL AMOUNT (if exists)
+                    };
+                  });
 
                   // Sort by value descending for better visualization
                   const chartData = allData;
@@ -168,61 +184,25 @@ const AIChat = () => {
                       </p>
                       <div className="overflow-x-auto">
                         <ResponsiveContainer width={dynamicWidth} height={450}>
-                          {chartType === "pie" ? (
-                            <PieChart>
-                              <Pie
-                                data={chartData}
-                                dataKey="value"
-                                nameKey="name"
-                                innerRadius={70}
-                                outerRadius={140}
-                                paddingAngle={3}
-                                label
-                              >
-                                {chartData.map((_, i) => (
-                                  <Cell key={i} fill={COLORS[i % COLORS.length]} />
-                                ))}
-                              </Pie>
-                              <Tooltip content={<CustomTooltip />} />
-                              <Legend />
-                            </PieChart>
-                          ) : chartType === "line" ? (
-                            <LineChart data={chartData}>
-                              <XAxis
-                                dataKey="name"
-                                stroke="#a1a1aa"
-                                angle={-45}
-                                textAnchor="end"
-                                height={100}
-                                interval={0}
-                                tickFormatter={truncateLabel}
-                              />
-                              <YAxis stroke="#a1a1aa" />
-                              <Tooltip content={<CustomTooltip />} />
-                              <Legend />
-                              <Line dataKey="value" stroke={COLORS[0]} strokeWidth={3} />
-                            </LineChart>
-                          ) : (
-                            <BarChart data={chartData}>
-                              <XAxis
-                                dataKey="name"
-                                stroke="#a1a1aa"
-                                angle={-45}
-                                textAnchor="end"
-                                height={100}
-                                interval={0}
-                                tickFormatter={truncateLabel}
-                              />
-                              <YAxis stroke="#a1a1aa" />
-                              <Tooltip content={<CustomTooltip />} />
-                              <Legend />
-                              <Bar dataKey="value">
-                                {chartData.map((_, i) => (
-                                  <Cell key={i} fill={COLORS[i % COLORS.length]} />
-                                ))}
-                              </Bar>
-                            </BarChart>
-                          )}
+                          <BarChart data={chartData}>
+                            <XAxis
+                              dataKey="name"
+                              stroke="#a1a1aa"
+                              angle={-45}
+                              textAnchor="end"
+                              height={100}
+                              interval={0}
+                              tickFormatter={truncateLabel}
+                            />
+                            <YAxis stroke="#a1a1aa" />
+                            <Tooltip content={<CustomTooltip />} cursor={{ fill: "rgba(82, 82, 82, 0.25)" }} />
+                            <Legend />
+                            <Bar dataKey="value">
+                              {chartData.map((_, i) => (
+                                <Cell key={i} fill={COLORS[i % COLORS.length]} />
+                              ))}
+                            </Bar>
+                          </BarChart>
                         </ResponsiveContainer>
                       </div>
                     </div>

@@ -58,7 +58,7 @@ GRAPH RULES (MANDATORY)
 
 Graph type rules:
 - Category vs Count → "bar"
-- Time-based Count or Amount → "line"
+- Time-based Count or Amount → "bar"
 - Comparisons → "bar"
 
 NEVER enable graphs for:
@@ -81,9 +81,9 @@ PARAMETER EXTRACTION RULES
   - DocumentNumberOrErrorMessage
 
 VENDOR TREND EXAMPLES:
-- "vendor value {VendorName} monthly trend" → getEntriesByVendor("{VendorName}"), graph: true, graphType: "line"
-- "{VendorName} trend" → getEntriesByVendor("{VendorName}"), graph: true, graphType: "line"
-- "show entries for vendor {VendorName}" → getEntriesByVendor("{VendorName}"), graph: true, graphType: "line"
+- "vendor value {VendorName} monthly trend" → getEntriesByVendor("{VendorName}"), graph: true, graphType: "bar"
+- "{VendorName} trend" → getEntriesByVendor("{VendorName}"), graph: true, graphType: "bar"
+- "show entries for vendor {VendorName}" → getEntriesByVendor("{VendorName}"), graph: true, graphType: "bar"
 
 -------------------------------------------------
 CONVERSATIONAL MESSAGE RULES
@@ -159,6 +159,36 @@ MONTHLY AMOUNT OVERRIDE RULE (STRICT)
 
 - NEVER use amountStats for time-based questions
 
+
+-------------------------------------------------
+APPROVAL OVERVIEW RULES (STRICT)
+-------------------------------------------------
+
+- An "approval overview" is a HIGH-LEVEL aggregate summary.
+- It MUST include:
+  - All available statuses (do NOT hardcode)
+  - Status counts
+  - Approver-wise breakdown
+  - Unique approver count
+  - Total entries
+
+- If the user question mentions:
+  - "approval overview"
+  - "approval summary"
+  - "approval status overview"
+
+  AND explicitly mentions "L1" or "L2"
+
+  THEN:
+  - helperFunction = getApprovalOverview
+  - parameters.level = "L1" or "L2"
+  - queryType = AGGREGATE
+  - graph = true
+  - graphType = "bar"
+
+- NEVER use getEntriesByStatus for approval overview queries
+- NEVER assume Approved / Rejected / Pending only
+- NEVER extract a specific status value
 
 -------------------------------------------------
 OUTPUT JSON FORMAT (STRICT)
