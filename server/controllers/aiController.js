@@ -168,6 +168,86 @@ export const askAi = async (req, res) => {
         };
       }
 
+      // 🏢 Cost Center distribution
+      else if (data[0].costCenter && data[0].count !== undefined) {
+        graph = {
+          type: "bar",
+          x: data.map(d => d.costCenter),
+          y: data.map(d => d.count),
+          label: decision.intent
+        };
+      }
+
+      // 🏢 Profit Center distribution
+      else if (data[0].profitCenter && data[0].count !== undefined) {
+        graph = {
+          type: "bar",
+          x: data.map(d => d.profitCenter),
+          y: data.map(d => d.count),
+          label: decision.intent
+        };
+      }
+
+      // 🏢 Business Area distribution
+      else if (data[0].businessArea && data[0].count !== undefined) {
+        graph = {
+          type: "bar",
+          x: data.map(d => d.businessArea),
+          y: data.map(d => d.count),
+          label: decision.intent
+        };
+      }
+
+      // 👤 Vendor concentration (totalAmount)
+      else if (data[0].vendorName && data[0].totalAmount !== undefined && data[0].count !== undefined) {
+        graph = {
+          type: "bar",
+          x: data.map(d => d.vendorName),
+          y: data.map(d => d.totalAmount),
+          label: decision.intent
+        };
+      }
+
+      // ✅ Approval rates (with percentage)
+      else if (data[0].status && data[0].percentage !== undefined) {
+        graph = {
+          type: "bar",
+          x: data.map(d => d.status),
+          y: data.map(d => d.percentage),
+          label: decision.intent
+        };
+      }
+
+      // ✅ Approver workload
+      else if (data[0].approverName && data[0].count !== undefined) {
+        graph = {
+          type: "bar",
+          x: data.map(d => d.approverName),
+          y: data.map(d => d.count),
+          label: decision.intent
+        };
+      }
+
+      // 📈 Year over year
+      else if (data[0].year && data[0].totalAmount !== undefined) {
+        graph = {
+          type: "bar",
+          x: data.map(d => d.year),
+          y: data.map(d => d.totalAmount),
+          label: decision.intent
+        };
+      }
+
+      // 📄 Error messages distribution
+      else if (data[0].errorMessage && data[0].count !== undefined) {
+        graph = {
+          type: "bar",
+          x: data.map(d => d.errorMessage),
+          y: data.map(d => d.count),
+          label: decision.intent
+        };
+      }
+
       // 8️⃣ Amount range summary
       else if (
         data[0].totalCount !== undefined &&

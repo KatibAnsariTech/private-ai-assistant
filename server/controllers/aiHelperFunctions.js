@@ -703,3 +703,851 @@ export const getApprovalOverview = async (level) => {
     { $sort: { count: -1 } }
   ]);
 };
+
+
+/* =====================================================
+   COST CENTER ANALYTICS
+   ===================================================== */
+
+// Cost center distribution
+export const getCostCenterDistribution = async () => {
+  return Entry.aggregate([
+    {
+      $match: {
+        JournalEntryCostCenter: { $nin: ["", null, undefined] }
+      }
+    },
+    {
+      $group: {
+        _id: "$JournalEntryCostCenter",
+        count: { $sum: 1 }
+      }
+    },
+    { $sort: { count: -1 } },
+    {
+      $project: {
+        costCenter: "$_id",
+        count: 1,
+        _id: 0
+      }
+    }
+  ]);
+};
+
+// Top cost centers by entry count
+export const topCostCenters = async (limit = 10) => {
+  return Entry.aggregate([
+    {
+      $match: {
+        JournalEntryCostCenter: { $nin: ["", null, undefined] }
+      }
+    },
+    {
+      $group: {
+        _id: "$JournalEntryCostCenter",
+        count: { $sum: 1 }
+      }
+    },
+    { $sort: { count: -1 } },
+    { $limit: limit },
+    {
+      $project: {
+        costCenter: "$_id",
+        count: 1,
+        _id: 0
+      }
+    }
+  ]);
+};
+
+// Cost center monthly trend
+export const costCenterMonthlyTrend = async (costCenter) => {
+  return Entry.aggregate([
+    {
+      $match: {
+        JournalEntryCostCenter: costCenter,
+        PostingDate: { $type: "string" }
+      }
+    },
+    {
+      $addFields: {
+        postingDateClean: {
+          $dateFromString: {
+            dateString: { $substrBytes: ["$PostingDate", 4, 20] },
+            format: "%b %d %Y %H:%M:%S",
+            onError: null,
+            onNull: null
+          }
+        }
+      }
+    },
+    { $match: { postingDateClean: { $ne: null } } },
+    {
+      $addFields: {
+        month: {
+          $dateToString: {
+            format: "%Y-%m",
+            date: "$postingDateClean"
+          }
+        }
+      }
+    },
+    {
+      $group: {
+        _id: "$month",
+        count: { $sum: 1 }
+      }
+    },
+    { $sort: { _id: 1 } },
+    {
+      $project: {
+        month: "$_id",
+        count: 1,
+        _id: 0
+      }
+    }
+  ]);
+};
+
+
+/* =====================================================
+   PROFIT CENTER ANALYTICS
+   ===================================================== */
+
+// Profit center distribution
+export const getProfitCenterDistribution = async () => {
+  return Entry.aggregate([
+    {
+      $match: {
+        JournalEntryProfitCenter: { $nin: ["", null, undefined] }
+      }
+    },
+    {
+      $group: {
+        _id: "$JournalEntryProfitCenter",
+        count: { $sum: 1 }
+      }
+    },
+    { $sort: { count: -1 } },
+    {
+      $project: {
+        profitCenter: "$_id",
+        count: 1,
+        _id: 0
+      }
+    }
+  ]);
+};
+
+// Top profit centers
+export const topProfitCenters = async (limit = 10) => {
+  return Entry.aggregate([
+    {
+      $match: {
+        JournalEntryProfitCenter: { $nin: ["", null, undefined] }
+      }
+    },
+    {
+      $group: {
+        _id: "$JournalEntryProfitCenter",
+        count: { $sum: 1 }
+      }
+    },
+    { $sort: { count: -1 } },
+    { $limit: limit },
+    {
+      $project: {
+        profitCenter: "$_id",
+        count: 1,
+        _id: 0
+      }
+    }
+  ]);
+};
+
+
+/* =====================================================
+   BUSINESS AREA ANALYTICS
+   ===================================================== */
+
+// Business area distribution
+export const getBusinessAreaDistribution = async () => {
+  return Entry.aggregate([
+    {
+      $match: {
+        JournalEntryBusinessArea: { $nin: ["", null, undefined] }
+      }
+    },
+    {
+      $group: {
+        _id: "$JournalEntryBusinessArea",
+        count: { $sum: 1 }
+      }
+    },
+    { $sort: { count: -1 } },
+    {
+      $project: {
+        businessArea: "$_id",
+        count: 1,
+        _id: 0
+      }
+    }
+  ]);
+};
+
+
+/* =====================================================
+   VENDOR PERFORMANCE ANALYTICS
+   ===================================================== */
+
+// Average transaction value per vendor
+export const getVendorAverageTransaction = async (vendor) => {
+  const vendorPattern = vendor
+    .replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+    .replace(/['']/g, "['']")
+    .replace(/\s+/g, "\\s+");
+
+  return Entry.aggregate([
+    {
+      $match: {
+        JournalEntryVendorName: new RegExp(vendorPattern, "i")
+      }
+    },
+    {
+      $addFields: {
+        amountClean: {
+          $switch: {
+            branches: [
+              {
+                case: { $isNumber: "$JournalEntryAmount" },
+                then: "$JournalEntryAmount"
+              },
+              {
+                case: {
+                  $and: [
+                    { $eq: [{ $type: "$JournalEntryAmount" }, "string"] },
+                    {
+                      $regexMatch: {
+                        input: { $trim: { input: "$JournalEntryAmount" } },
+                        regex: /^-?\d{1,3}(,\d{3})*(\.\d+)?$|^-?\d+(\.\d+)?$/
+                      }
+                    }
+                  ]
+                },
+                then: {
+                  $toDouble: {
+                    $replaceAll: {
+                      input: { $trim: { input: "$JournalEntryAmount" } },
+                      find: ",",
+                      replacement: ""
+                    }
+                  }
+                }
+              }
+            ],
+            default: null
+          }
+        }
+      }
+    },
+    {
+      $match: {
+        amountClean: { $ne: null }
+      }
+    },
+    {
+      $group: {
+        _id: null,
+        vendorName: { $first: "$JournalEntryVendorName" },
+        avgTransaction: { $avg: "$amountClean" },
+        totalTransactions: { $sum: 1 },
+        totalAmount: { $sum: "$amountClean" }
+      }
+    },
+    {
+      $project: {
+        _id: 0,
+        vendorName: 1,
+        avgTransaction: 1,
+        totalTransactions: 1,
+        totalAmount: 1
+      }
+    }
+  ]);
+};
+
+// Vendor concentration (top vendors by total amount)
+export const getVendorConcentration = async () => {
+  return Entry.aggregate([
+    {
+      $addFields: {
+        amountClean: {
+          $switch: {
+            branches: [
+              {
+                case: { $isNumber: "$JournalEntryAmount" },
+                then: "$JournalEntryAmount"
+              },
+              {
+                case: {
+                  $and: [
+                    { $eq: [{ $type: "$JournalEntryAmount" }, "string"] },
+                    {
+                      $regexMatch: {
+                        input: { $trim: { input: "$JournalEntryAmount" } },
+                        regex: /^-?\d{1,3}(,\d{3})*(\.\d+)?$|^-?\d+(\.\d+)?$/
+                      }
+                    }
+                  ]
+                },
+                then: {
+                  $toDouble: {
+                    $replaceAll: {
+                      input: { $trim: { input: "$JournalEntryAmount" } },
+                      find: ",",
+                      replacement: ""
+                    }
+                  }
+                }
+              }
+            ],
+            default: null
+          }
+        }
+      }
+    },
+    {
+      $match: {
+        amountClean: { $ne: null },
+        JournalEntryVendorName: { $nin: ["", null] }
+      }
+    },
+    {
+      $group: {
+        _id: "$JournalEntryVendorName",
+        totalAmount: { $sum: "$amountClean" },
+        count: { $sum: 1 }
+      }
+    },
+    { $sort: { totalAmount: -1 } },
+    { $limit: 10 },
+    {
+      $project: {
+        vendorName: "$_id",
+        totalAmount: 1,
+        count: 1,
+        _id: 0
+      }
+    }
+  ]);
+};
+
+// Dormant vendors (no activity in X months)
+export const getDormantVendors = async (months = 6) => {
+  const cutoffDate = new Date();
+  cutoffDate.setMonth(cutoffDate.getMonth() - months);
+
+  return Entry.aggregate([
+    {
+      $match: {
+        JournalEntryVendorName: { $nin: ["", null] },
+        PostingDate: { $type: "string" }
+      }
+    },
+    {
+      $addFields: {
+        postingDateClean: {
+          $dateFromString: {
+            dateString: { $substrBytes: ["$PostingDate", 4, 20] },
+            format: "%b %d %Y %H:%M:%S",
+            onError: null,
+            onNull: null
+          }
+        }
+      }
+    },
+    { $match: { postingDateClean: { $ne: null } } },
+    {
+      $group: {
+        _id: "$JournalEntryVendorName",
+        lastTransaction: { $max: "$postingDateClean" },
+        count: { $sum: 1 }
+      }
+    },
+    {
+      $match: {
+        lastTransaction: { $lt: cutoffDate }
+      }
+    },
+    { $sort: { lastTransaction: -1 } },
+    {
+      $project: {
+        vendorName: "$_id",
+        lastTransaction: 1,
+        count: 1,
+        _id: 0
+      }
+    }
+  ]);
+};
+
+
+/* =====================================================
+   APPROVAL WORKFLOW ANALYTICS
+   ===================================================== */
+
+// Approval rates (percentage approved, rejected, pending)
+export const getApprovalRates = async (level) => {
+  const statusField = level === "L1" ? "L1ApproverStatus" : "L2ApproverStatus";
+
+  return Entry.aggregate([
+    {
+      $project: {
+        status: {
+          $cond: {
+            if: { $eq: [{ $toUpper: `$${statusField}` }, "PENDING"] },
+            then: "Pending",
+            else: {
+              $cond: {
+                if: {
+                  $or: [
+                    { $eq: [`$${statusField}`, ""] },
+                    { $eq: [`$${statusField}`, null] }
+                  ]
+                },
+                then: "Pending",
+                else: `$${statusField}`
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      $group: {
+        _id: "$status",
+        count: { $sum: 1 }
+      }
+    },
+    {
+      $group: {
+        _id: null,
+        statuses: {
+          $push: {
+            status: "$_id",
+            count: "$count"
+          }
+        },
+        total: { $sum: "$count" }
+      }
+    },
+    {
+      $unwind: "$statuses"
+    },
+    {
+      $project: {
+        _id: 0,
+        status: "$statuses.status",
+        count: "$statuses.count",
+        percentage: {
+          $multiply: [
+            { $divide: ["$statuses.count", "$total"] },
+            100
+          ]
+        }
+      }
+    },
+    { $sort: { percentage: -1 } }
+  ]);
+};
+
+// Approver workload (per approver breakdown)
+export const getApproverWorkload = async (level) => {
+  const nameField = level === "L1" ? "L1ApproverName" : "L2ApproverName";
+
+  return Entry.aggregate([
+    {
+      $match: {
+        [nameField]: { $nin: ["", null] }
+      }
+    },
+    {
+      $group: {
+        _id: `$${nameField}`,
+        count: { $sum: 1 }
+      }
+    },
+    { $sort: { count: -1 } },
+    {
+      $project: {
+        approverName: "$_id",
+        count: 1,
+        _id: 0
+      }
+    }
+  ]);
+};
+
+
+/* =====================================================
+   DOCUMENT & ERROR TRACKING
+   ===================================================== */
+
+// Get document details by document number
+export const getDocumentDetails = async (documentNumber) => {
+  return Entry.findOne({
+    DocumentNumberOrErrorMessage: new RegExp(documentNumber, "i")
+  }).lean();
+};
+
+// Get all reversal documents
+export const getReversalDocuments = async () => {
+  return Entry.aggregate([
+    {
+      $match: {
+        ReversalDocumentNumber: { $nin: ["", null] }
+      }
+    },
+    {
+      $project: {
+        documentNumber: "$DocumentNumberOrErrorMessage",
+        reversalNumber: "$ReversalDocumentNumber",
+        vendorName: "$JournalEntryVendorName",
+        amount: "$JournalEntryAmount",
+        postingDate: "$PostingDate",
+        _id: 0
+      }
+    },
+    { $limit: 100 }
+  ]);
+};
+
+// Get documents with errors
+export const getDocumentsWithErrors = async () => {
+  return Entry.aggregate([
+    {
+      $match: {
+        DocumentNumberOrErrorMessage: {
+          $regex: /error|invalid|failed/i
+        }
+      }
+    },
+    {
+      $group: {
+        _id: "$DocumentNumberOrErrorMessage",
+        count: { $sum: 1 }
+      }
+    },
+    { $sort: { count: -1 } },
+    {
+      $project: {
+        errorMessage: "$_id",
+        count: 1,
+        _id: 0
+      }
+    }
+  ]);
+};
+
+
+/* =====================================================
+   COMPARATIVE ANALYTICS
+   ===================================================== */
+
+// Year-over-year comparison
+export const getYearOverYearComparison = async () => {
+  return Entry.aggregate([
+    {
+      $match: {
+        PostingDate: { $type: "string" }
+      }
+    },
+    {
+      $addFields: {
+        postingDateClean: {
+          $dateFromString: {
+            dateString: { $substrBytes: ["$PostingDate", 4, 20] },
+            format: "%b %d %Y %H:%M:%S",
+            onError: null,
+            onNull: null
+          }
+        },
+        amountClean: {
+          $switch: {
+            branches: [
+              {
+                case: { $isNumber: "$JournalEntryAmount" },
+                then: "$JournalEntryAmount"
+              },
+              {
+                case: {
+                  $and: [
+                    { $eq: [{ $type: "$JournalEntryAmount" }, "string"] },
+                    {
+                      $regexMatch: {
+                        input: { $trim: { input: "$JournalEntryAmount" } },
+                        regex: /^-?\d{1,3}(,\d{3})*(\.\d+)?$|^-?\d+(\.\d+)?$/
+                      }
+                    }
+                  ]
+                },
+                then: {
+                  $toDouble: {
+                    $replaceAll: {
+                      input: { $trim: { input: "$JournalEntryAmount" } },
+                      find: ",",
+                      replacement: ""
+                    }
+                  }
+                }
+              }
+            ],
+            default: null
+          }
+        }
+      }
+    },
+    {
+      $match: {
+        postingDateClean: { $ne: null },
+        amountClean: { $ne: null }
+      }
+    },
+    {
+      $addFields: {
+        year: { $year: "$postingDateClean" }
+      }
+    },
+    {
+      $group: {
+        _id: "$year",
+        totalAmount: { $sum: "$amountClean" },
+        count: { $sum: 1 }
+      }
+    },
+    { $sort: { _id: 1 } },
+    {
+      $project: {
+        year: "$_id",
+        totalAmount: 1,
+        count: 1,
+        _id: 0
+      }
+    }
+  ]);
+};
+
+// Month-over-month comparison
+export const getMonthOverMonthComparison = async () => {
+  return Entry.aggregate([
+    {
+      $match: {
+        PostingDate: { $type: "string" }
+      }
+    },
+    {
+      $addFields: {
+        postingDateClean: {
+          $dateFromString: {
+            dateString: { $substrBytes: ["$PostingDate", 4, 20] },
+            format: "%b %d %Y %H:%M:%S",
+            onError: null,
+            onNull: null
+          }
+        },
+        amountClean: {
+          $switch: {
+            branches: [
+              {
+                case: { $isNumber: "$JournalEntryAmount" },
+                then: "$JournalEntryAmount"
+              },
+              {
+                case: {
+                  $and: [
+                    { $eq: [{ $type: "$JournalEntryAmount" }, "string"] },
+                    {
+                      $regexMatch: {
+                        input: { $trim: { input: "$JournalEntryAmount" } },
+                        regex: /^-?\d{1,3}(,\d{3})*(\.\d+)?$|^-?\d+(\.\d+)?$/
+                      }
+                    }
+                  ]
+                },
+                then: {
+                  $toDouble: {
+                    $replaceAll: {
+                      input: { $trim: { input: "$JournalEntryAmount" } },
+                      find: ",",
+                      replacement: ""
+                    }
+                  }
+                }
+              }
+            ],
+            default: null
+          }
+        }
+      }
+    },
+    {
+      $match: {
+        postingDateClean: { $ne: null },
+        amountClean: { $ne: null }
+      }
+    },
+    {
+      $addFields: {
+        month: {
+          $dateToString: {
+            format: "%Y-%m",
+            date: "$postingDateClean"
+          }
+        }
+      }
+    },
+    {
+      $group: {
+        _id: "$month",
+        totalAmount: { $sum: "$amountClean" },
+        count: { $sum: 1 }
+      }
+    },
+    { $sort: { _id: 1 } },
+    {
+      $project: {
+        month: "$_id",
+        totalAmount: 1,
+        count: 1,
+        _id: 0
+      }
+    }
+  ]);
+};
+
+
+/* =====================================================
+   ANOMALY DETECTION
+   ===================================================== */
+
+// Detect amount outliers (transactions beyond threshold standard deviations)
+export const detectAmountOutliers = async (threshold = 2) => {
+  const stats = await Entry.aggregate([
+    {
+      $addFields: {
+        amountClean: {
+          $switch: {
+            branches: [
+              {
+                case: { $isNumber: "$JournalEntryAmount" },
+                then: "$JournalEntryAmount"
+              },
+              {
+                case: {
+                  $and: [
+                    { $eq: [{ $type: "$JournalEntryAmount" }, "string"] },
+                    {
+                      $regexMatch: {
+                        input: { $trim: { input: "$JournalEntryAmount" } },
+                        regex: /^-?\d{1,3}(,\d{3})*(\.\d+)?$|^-?\d+(\.\d+)?$/
+                      }
+                    }
+                  ]
+                },
+                then: {
+                  $toDouble: {
+                    $replaceAll: {
+                      input: { $trim: { input: "$JournalEntryAmount" } },
+                      find: ",",
+                      replacement: ""
+                    }
+                  }
+                }
+              }
+            ],
+            default: null
+          }
+        }
+      }
+    },
+    {
+      $match: {
+        amountClean: { $ne: null }
+      }
+    },
+    {
+      $group: {
+        _id: null,
+        avg: { $avg: "$amountClean" },
+        stdDev: { $stdDevPop: "$amountClean" }
+      }
+    }
+  ]);
+
+  if (!stats.length || !stats[0].stdDev) {
+    return [];
+  }
+
+  const { avg, stdDev } = stats[0];
+  const upperBound = avg + (threshold * stdDev);
+  const lowerBound = avg - (threshold * stdDev);
+
+  return Entry.aggregate([
+    {
+      $addFields: {
+        amountClean: {
+          $switch: {
+            branches: [
+              {
+                case: { $isNumber: "$JournalEntryAmount" },
+                then: "$JournalEntryAmount"
+              },
+              {
+                case: {
+                  $and: [
+                    { $eq: [{ $type: "$JournalEntryAmount" }, "string"] },
+                    {
+                      $regexMatch: {
+                        input: { $trim: { input: "$JournalEntryAmount" } },
+                        regex: /^-?\d{1,3}(,\d{3})*(\.\d+)?$|^-?\d+(\.\d+)?$/
+                      }
+                    }
+                  ]
+                },
+                then: {
+                  $toDouble: {
+                    $replaceAll: {
+                      input: { $trim: { input: "$JournalEntryAmount" } },
+                      find: ",",
+                      replacement: ""
+                    }
+                  }
+                }
+              }
+            ],
+            default: null
+          }
+        }
+      }
+    },
+    {
+      $match: {
+        amountClean: { $ne: null },
+        $or: [
+          { amountClean: { $gt: upperBound } },
+          { amountClean: { $lt: lowerBound } }
+        ]
+      }
+    },
+    { $limit: 100 },
+    {
+      $project: {
+        vendorName: "$JournalEntryVendorName",
+        amount: "$amountClean",
+        documentNumber: "$DocumentNumberOrErrorMessage",
+        postingDate: "$PostingDate",
+        _id: 0
+      }
+    }
+  ]);
+};

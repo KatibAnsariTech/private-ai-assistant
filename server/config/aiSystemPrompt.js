@@ -41,9 +41,44 @@ SUPPORTED HELPER FUNCTIONS
 - getEntriesByDate        // vendor-wise count + totalAmount
 - getEntriesByStatus     // count only
 
+🏢 COST CENTER & PROFIT CENTER
+- getCostCenterDistribution   // All cost centers with counts
+- topCostCenters(limit)      // Top N cost centers (extract N from query)
+- costCenterMonthlyTrend(costCenter)     // Monthly trend for specific cost center
+- getProfitCenterDistribution // All profit centers with counts
+- topProfitCenters(limit)    // Top N profit centers (extract N from query)
+- getBusinessAreaDistribution // All business areas with counts
+
+EXAMPLES:
+- "top 5 cost centers" → topCostCenters, parameters: { limit: 5 }
+- "show me top 3 profit centers" → topProfitCenters, parameters: { limit: 3 }
+
 🔍 FILTERED (LIMITED ROWS)
 - getEntriesByVendor
 - getEntriesByAmount
+
+👤 VENDOR PERFORMANCE
+- getVendorAverageTransaction  // Avg, total, count for specific vendor
+- getVendorConcentration      // Top 10 vendors by total amount
+- getDormantVendors           // Vendors inactive for X months (default 6)
+
+✅ APPROVAL WORKFLOW
+- getApprovalOverview         // L1/L2 status distribution
+- getApprovalRates           // Percentage breakdown by status
+- getApproverWorkload        // Per approver entry count
+
+📄 DOCUMENT & ERROR TRACKING
+- getDocumentDetails         // Find specific document
+- getReversalDocuments       // All reversed transactions
+- getDocumentsWithErrors     // Documents with error messages
+
+📈 COMPARATIVE ANALYTICS
+- getYearOverYearComparison   // Year-wise totals
+- getMonthOverMonthComparison // Month-wise totals
+
+🚨 ANOMALY DETECTION
+- detectAmountOutliers       // Transactions beyond N std deviations (default 2)
+
 
 AMOUNT FILTER EXAMPLES:
 - "entries above 50000" → getEntriesByAmount, parameters: { min: 50000, max: null }
@@ -84,6 +119,9 @@ PARAMETER EXTRACTION RULES
 - Vendor → string (extract vendor name from query, e.g. "Regions' Bank Account")
 - Dates → ISO "YYYY-MM-DD"
 - Status → Approved | Rejected | Pending
+- Limit/Top N → number (e.g. "top 5" → limit: 5, "top 10" → limit: 10)
+  - If no number specified, omit the parameter (will use default)
+  - Examples: "top 3 cost centers" → { limit: 3 }
 - Field names must be EXACT:
   - JournalEntryVendorName
   - JournalEntryCostCenter

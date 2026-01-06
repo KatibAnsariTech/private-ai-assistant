@@ -66,7 +66,30 @@ const AIChat = () => {
       id: 1,
       role: "assistant",
       content:
-        "👋 Hello! I'm your AI assistant for Excel data analysis.\n\n**Try asking:**\n• Graph of credit vs debit\n• Vendor distribution\n• Cost center breakdown",
+        "👋 Hello! I'm your AI assistant for Excel data analysis.\n\n" +
+        "**📊 Basic Analytics:**\n" +
+        "• Graph of credit vs debit\n" +
+        "• Vendor distribution\n" +
+        "• Amount statistics\n\n" +
+        "**🏢 Cost & Profit Centers:**\n" +
+        "• Top 5 cost centers\n" +
+        "• Profit center distribution\n" +
+        "• Business area breakdown\n\n" +
+        "**👤 Vendor Performance:**\n" +
+        "• Top vendor concentration\n" +
+        "• Average transaction for [vendor]\n" +
+        "• Dormant vendors\n\n" +
+        "**✅ Approval Analytics:**\n" +
+        "• L1 approval rates\n" +
+        "• L2 approver workload\n\n" +
+        "**📈 Comparisons:**\n" +
+        "• Year over year\n" +
+        "• Month over month\n\n" +
+        "**📄 Documents:**\n" +
+        "• Show reversals\n" +
+        "• Most common errors\n\n" +
+        "**🚨 Advanced:**\n" +
+        "• Detect outliers",
       timestamp: new Date()
     }
   ]);
@@ -155,13 +178,13 @@ const AIChat = () => {
                     const row = msg.data?.[i] || {};
                     return {
                       name: String(x),
-                      value: msg.graph.y[i] ?? 0,          // COUNT
+                      value: msg.graph.y[i] ?? 0,          // COUNT or TOTAL AMOUNT
                       amount: row.totalAmount ?? null      // TOTAL AMOUNT (if exists)
                     };
                   });
 
-                  // Sort by value descending for better visualization
-                  const chartData = allData;
+                  // Sort by value descending for better visualization (high to low)
+                  const chartData = [...allData].sort((a, b) => b.value - a.value);
 
                   // Use presentType from message, fallback to graph.type
                   const chartType = msg.presentType || msg.graph.type || "bar";
@@ -173,9 +196,23 @@ const AIChat = () => {
                   };
 
                   // Dynamic width based on number of data points
-                  const minWidth = 800;
-                  const pixelsPerDataPoint = 60;
+                  // For single items or few items, use smaller width to prevent bars from being too wide
+                  const minWidth = chartData.length === 1 ? 400 : 800;
+                  // Increase spacing for larger datasets to prevent overlap
+                  let pixelsPerDataPoint;
+                  if (chartData.length <= 3) {
+                    pixelsPerDataPoint = 100;
+                  } else if (chartData.length <= 10) {
+                    pixelsPerDataPoint = 80;
+                  } else if (chartData.length <= 20) {
+                    pixelsPerDataPoint = 100;
+                  } else {
+                    pixelsPerDataPoint = 120; // More space for large datasets
+                  }
                   const dynamicWidth = Math.max(minWidth, chartData.length * pixelsPerDataPoint);
+
+                  // Max bar size to prevent single bars from being too wide
+                  const maxBarSize = chartData.length === 1 ? 80 : chartData.length <= 3 ? 120 : undefined;
 
                   return (
                     <div className="mt-4 bg-slate-900/60 p-4 rounded-xl">
@@ -184,7 +221,7 @@ const AIChat = () => {
                       </p>
                       <div className="overflow-x-auto">
                         <ResponsiveContainer width={dynamicWidth} height={450}>
-                          <BarChart data={chartData}>
+                          <BarChart data={chartData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }} barCategoryGap="10%">
                             <XAxis
                               dataKey="name"
                               stroke="#a1a1aa"
@@ -197,7 +234,7 @@ const AIChat = () => {
                             <YAxis stroke="#a1a1aa" />
                             <Tooltip content={<CustomTooltip />} cursor={{ fill: "rgba(82, 82, 82, 0.25)" }} />
                             <Legend />
-                            <Bar dataKey="value">
+                            <Bar dataKey="value" maxBarSize={maxBarSize}>
                               {chartData.map((_, i) => (
                                 <Cell key={i} fill={COLORS[i % COLORS.length]} />
                               ))}

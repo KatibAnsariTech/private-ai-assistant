@@ -151,7 +151,9 @@ function App() {
         "Count all unique Journal Entry Type ",
         "Show total, average, max and min amount",
         "Which vendor has highest entries?",
-        "Show cost center distribution"
+        "Show all cost center distribution",
+        "Show 1 top cost center distribution",
+        "Top vendor concentration risk"
       ]
     },
     {
@@ -166,8 +168,14 @@ function App() {
     {
       category: "📈 Status",
       questions: [
-        "Show L1 approval overview",
-        "Show L2 approval overview"
+        "Show me L1 approval rates",
+        "Show me L2 approval rates"
+      ]
+    },
+    {
+      category: "Errors",
+      questions:[
+        "what are the most common errors ?",
       ]
     }
   ];
